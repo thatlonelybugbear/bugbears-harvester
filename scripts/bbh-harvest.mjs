@@ -3,13 +3,14 @@ import { getCreatureTypeTableMappings, getHarvestAttemptsMaxForActor, isAutoRoll
 import { debugLog, format, infoLog, localize, parseNonNegativeInteger } from './bbh-utils.mjs';
 
 const DEBUG_PREFIX = `${MODULE_ID} |`;
-// const QUERY_PROMPT = `${MODULE_ID}.harvestPromptRequest`;
+const QUERY_PROMPT = `${MODULE_ID}.harvestPromptRequest`;
 const QUERY_MARK = `${MODULE_ID}.harvestMarkRequest`;
 const RECENT_DRAG_QUANTITIES = new Map();
 const RECENT_DRAG_TTL_MS = 15000;
 
 export function registerHarvestHooks() {
 	Hooks.on('getSceneControlButtons', addSceneControlButton);
+	// Hooks.on("renderChatMessage", bindHarvestChatActions);
 	Hooks.on('renderChatMessageHTML', bindHarvestChatActions);
 	Hooks.on('preCreateChatMessage', addRollTableQuantityToChatMessage);
 	Hooks.on('createChatMessage', appendCompendiumRollTableQuantitiesToChatMessage);
@@ -21,33 +22,24 @@ export function registerHarvestKeybindings() {
 	// Intentionally unwired. Kept as placeholder for later reuse.
 }
 
-export async function runHarvest({ actor, target } = {}) {
-	const harvestingActor = actor instanceof Actor ? actor : resolveHarvestingActor();
+export async function runHarvest({ actor } = {}) {
+	const harvestingActor = actor ?? resolveHarvestingActor();
 	if (!harvestingActor) {
-		ui.notifications.warn(localize('BBH.WARN.SelectOne.Actor'));
+		ui.notifications.warn(localize('BBH.WARN.SelectOrOpenActor'));
 		return null;
 	}
 
-	let targetToken, targetActor;
-	if (target) {
-		if (target instanceof Token) targetToken = target;
-		else if (target instanceof TokenDocument) targetToken = target.object;
-		else if (target instanceof Actor) targetToken = target.getActiveTokens()[0];
-	} else {
-		targetToken = getSingleTargetToken();
-	}
-	targetActor = targetToken?.actor;
-	if (!targetToken || !targetActor) return null;
-	if (!isHarvestableTargetActor(targetActor)) {
+	const targetToken = getSingleTargetToken();
+	if (!isHarvestableTargetActor(targetToken.actor)) {
 		ui.notifications.info(localize('BBH.WARN.TargetMustBeAtZeroHp'));
 		return null;
 	}
-	if (hasReachedHarvestAttemptLimit(targetActor)) {
-		ui.notifications.info(getHarvestAttemptsReachedMessage(targetActor));
+	if (hasReachedHarvestAttemptLimit(targetToken.actor)) {
+		ui.notifications.info(getHarvestAttemptsReachedMessage(targetToken.actor));
 		return null;
 	}
 
-	const creatureTypeKeys = getCreatureTypeKeys(targetActor);
+	const creatureTypeKeys = getCreatureTypeKeys(targetToken.actor);
 	const creatureType = creatureTypeKeys[0] ?? 'custom';
 	const tables = await resolveHarvestTables(creatureTypeKeys);
 	const table = tables[0];
@@ -58,7 +50,7 @@ export async function runHarvest({ actor, target } = {}) {
 
 	const payload = {
 		actorUuid: harvestingActor.uuid,
-		targetTokenUuid: targetToken.document?.uuid,
+		targetTokenUuid: targetToken.document?.uuid ?? targetToken.uuid,
 		tableUuid: table.uuid,
 		creatureType,
 		requesterUserId: game.user.id,
@@ -107,7 +99,6 @@ async function executeHarvest(payload, selectedSkill, promptMessage = null) {
 			{
 				speaker: ChatMessage.getSpeaker({ actor }),
 				flavor: format('BBH.CHAT.RollFlavor', { actorName: actor.name, targetName: targetActor.name }),
-				...getRollModeMessageData(),
 			},
 		)) ?? [];
 
@@ -184,7 +175,7 @@ async function executeHarvest(payload, selectedSkill, promptMessage = null) {
 function addSceneControlButton(controls) {
 	if (!controls || typeof controls !== 'object') return;
 
-	if (!game.user.isActiveGM) {
+	if (!game.user.isGM) {
 		const tokenControl = controls.tokens;
 		if (!tokenControl?.tools || typeof tokenControl.tools !== 'object') return;
 		tokenControl.tools[`${MODULE_ID}-harvest-target`] = {
@@ -257,14 +248,17 @@ function addSceneControlButton(controls) {
 	};
 }
 
+// function onRenderChatMessageHtml(message, html) {
+//   bindHarvestChatActions(message, html);
+// }
+
 function registerHarvestQueries() {
-	// CONFIG.queries[QUERY_PROMPT] = async (queryData) => {
-	// 	console.log('Received harvest prompt query', { queryData });
-	// 	if (!game.user.isActiveGM) return false;
-	// 	if (!queryData?.payload) return false;
-	// 	await postHarvestSkillPrompt(queryData.payload /*, { createRequesterMessage: false, createGmMessage: true }*/);
-	// 	return true;
-	// };
+	CONFIG.queries[QUERY_PROMPT] = async (queryData) => {
+		if (!game.user.isActiveGM) return false;
+		if (!queryData?.payload) return false;
+		await postHarvestSkillPrompt(queryData.payload, { createRequesterMessage: false, createGmMessage: true });
+		return true;
+	};
 	CONFIG.queries[QUERY_MARK] = async (queryData) => {
 		if (!game.user.isActiveGM) return false;
 		if (!queryData?.request) return false;
@@ -276,19 +270,7 @@ function registerHarvestQueries() {
 function bindHarvestChatActions(message, root) {
 	if (!root) return;
 
-	root.querySelectorAll('.table-results li[data-bhh-quantity] a.content-link[data-link]').forEach((link) => {
-		if (link.dataset.bbhQuantityDragBound === 'true') return;
-		link.dataset.bbhQuantityDragBound = 'true';
-		link.addEventListener('dragstart', onQuantityContentLinkDragStart);
-	});
-
-	if (!message.flags?.bbh) return;
-	if (!game.user.isActiveGM) {
-		const tableP = [...root.querySelectorAll('p')].find((p) => p.textContent.trim().startsWith('Table'));
-		tableP?.remove();
-	}
 	root.querySelectorAll("[data-harvester-action='roll-skill']").forEach((button) => {
-		if (!game.user.isActiveGM) button.textContent = button.textContent.split('(')[0].trim();
 		if (button.dataset.harvesterBound === 'true') return;
 		button.dataset.harvesterBound = 'true';
 		button.addEventListener('click', async (event) => {
@@ -302,6 +284,12 @@ function bindHarvestChatActions(message, root) {
 			button.disabled = false;
 		});
 	});
+
+	root.querySelectorAll('.table-results li[data-bhh-quantity] a.content-link[data-link]').forEach((link) => {
+		if (link.dataset.bbhQuantityDragBound === 'true') return;
+		link.dataset.bbhQuantityDragBound = 'true';
+		link.addEventListener('dragstart', onQuantityContentLinkDragStart);
+	});
 }
 
 function resolveHarvestingActor() {
@@ -313,17 +301,13 @@ function resolveHarvestingActor() {
 
 function getSingleTargetToken() {
 	const targets = Array.from(game.user.targets ?? []);
-	const targetToken = targets[0];
 	if (targets.length !== 1) {
-		ui.notifications.warn(localize('BBH.WARN.SelectOne.Target'));
+		ui.notifications.warn(localize('BBH.WARN.SelectOneTarget'));
 		return null;
 	}
-	if (!game.actors.get(targetToken.actor?.id) || !targetToken?.actor?.system) {
-		ui.notifications.warn(localize('BBH.WARN.SelectOne.TargetActor'));
-		return null;
-	}
-	if (!targetToken.actor.system?.isCreature) {
-		ui.notifications.warn(localize('BBH.WARN.SelectOne.Creature'));
+	const targetToken = targets[0];
+	if (!targetToken?.actor) {
+		ui.notifications.warn(localize('BBH.WARN.SelectOneTarget'));
 		return null;
 	}
 	return targetToken;
@@ -333,20 +317,9 @@ function getGmUserIds() {
 	return ChatMessage.getWhisperRecipients('GM').map((user) => user.id);
 }
 
-function getRollModeMessageData() {
-	const configuredMode = game.settings.get('core', 'rollMode');
-	const mode = typeof configuredMode === 'string' ? configuredMode.trim() : '';
-	if (!mode) return {};
-	const generation = Number(game.release?.generation ?? 0);
-	return generation >= 14 ? { mode } : { rollMode: mode };
-}
-
 async function resolveHarvestTables(creatureTypeKeys = []) {
 	const entries = getCreatureTypeTableMappings();
 	const exact = entries.filter((entry) => getEntryTypeMatchKeys(entry.type).some((key) => creatureTypeKeys.includes(key)));
-
-	exact.push(exact.shift()); // We need the proper type last, so that custom entries can return RollTables first.
-
 	const fallback = entries.filter((entry) => entry.type === 'all');
 	const exactDocuments = await resolveConfiguredHarvestTables(exact);
 	if (exactDocuments.length) return exactDocuments;
@@ -365,10 +338,7 @@ function getEntryTypeMatchKeys(rawType) {
 	const rawSubtypes = value.slice(colonIndex + 1).trim();
 	if (!baseType || !rawSubtypes) return [value];
 
-	const subtypeParts = rawSubtypes
-		.split(',')
-		.map((part) => part.trim())
-		.filter(Boolean);
+	const subtypeParts = rawSubtypes.split(',').map((part) => part.trim()).filter(Boolean);
 	if (!subtypeParts.length) return [value];
 
 	const expanded = [];
@@ -383,10 +353,20 @@ function _raceOrType(actor, dataType = 'all') {
 	const systemData = actor?.system;
 	if (!systemData?.details?.type) return {};
 
-	const data = foundry.utils.duplicate(systemData.details.type);
-	data.race = systemData.details.race?.identifier ?? data.value;
+	let data = {};
+	if (actor.type === 'character' || actor.type === 'npc') {
+		data = foundry.utils.duplicate(systemData.details.type);
+		data.race = systemData.details.race?.identifier ?? data.value;
+		data.type = actor.type;
+	} else if (actor.type === 'group') {
+		data = { type: 'group', value: systemData.type.value };
+	} else if (actor.type === 'vehicle') {
+		data = { type: 'vehicle', value: systemData.vehicleType };
+	}
 
-	const normalized = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, typeof v === 'string' ? v.toLowerCase() : v]));
+	const normalized = Object.fromEntries(
+		Object.entries(data).map(([k, v]) => [k, typeof v === 'string' ? v.toLowerCase() : v]),
+	);
 	if (dataType === 'all') return normalized;
 	return normalized[dataType];
 }
@@ -398,17 +378,11 @@ function getCreatureTypeKeys(actor) {
 	const subtypeValue = all.subtype;
 	const typeLabel = actor?.system?.details?.type?.label;
 	if (typeValue && subtypeValue) values.push(`${typeValue}:${subtypeValue}`);
-	// if (typeValue && subtypeValue) values.push(`${typeValue} (${subtypeValue})`);
+	if (typeValue && subtypeValue) values.push(`${typeValue} (${subtypeValue})`);
 	if (typeof typeLabel === 'string' && typeLabel.trim()) values.push(typeLabel.toLowerCase().trim());
 	if (all.custom && subtypeValue) values.push(`${all.custom} (${subtypeValue})`);
 
-	const subtypeParts =
-		typeof subtypeValue === 'string' ?
-			subtypeValue
-				.split(',')
-				.map((part) => part.trim())
-				.filter(Boolean)
-		:	[];
+	const subtypeParts = typeof subtypeValue === 'string' ? subtypeValue.split(',').map((part) => part.trim()).filter(Boolean) : [];
 	for (const subtypePart of subtypeParts) {
 		if (typeValue) {
 			values.push(`${typeValue}:${subtypePart}`);
@@ -431,10 +405,7 @@ async function resolveConfiguredHarvestTables(entries) {
 				`${DEBUG_PREFIX} ${JSON.stringify({
 					event: 'resolveConfiguredHarvestTables:excluded',
 					entryUuid: entry?.uuid ?? null,
-					resolved:
-						isRollTable ? 'RollTable'
-						: document ? document.documentName
-						: null,
+					resolved: isRollTable ? 'RollTable' : document ? document.documentName : null,
 					tableUuid: isRollTable ? document.uuid : null,
 					isHarvestTable,
 				})}`,
@@ -513,6 +484,7 @@ async function resolveTableHarvestResults(table) {
 				resultId: result?.id,
 				resultName: result?.name ?? result?.description ?? null,
 				documentUuid: result?.documentUuid ?? null,
+				documentCollection: result?.documentCollection ?? null,
 			});
 			continue;
 		}
@@ -577,6 +549,15 @@ function getResultItemUuid(result) {
 		if (uuid) return uuid;
 	}
 
+	const pairs = [
+		[source?.documentCollection, source?.documentId],
+		[result?.source?.documentCollection, result?.source?.documentId],
+	];
+	for (const [collectionRaw, idRaw] of pairs) {
+		const collection = typeof collectionRaw === 'string' ? collectionRaw.trim() : '';
+		const id = typeof idRaw === 'string' ? idRaw.trim() : '';
+		if (collection && id) return `${collection}.${id}`;
+	}
 	return null;
 }
 
@@ -595,7 +576,7 @@ async function resolveQuantity(result, actor, targetActor, table) {
 	return Math.max(1, Math.floor(rolledTotal));
 }
 
-function addRollTableQuantityToChatMessage(message, data, options, user) {
+function addRollTableQuantityToChatMessage(message, data) {
 	if (foundry.utils.getProperty(data, `flags.${MODULE_ID}.quantityAppended`)) return;
 
 	if (typeof data.content !== 'string' || !data.content.trim()) return;
@@ -620,10 +601,7 @@ function addRollTableQuantityToChatMessage(message, data, options, user) {
 		if (!formula) continue;
 
 		const total = evaluateQuantityFormulaSync(formula);
-		const resultName =
-			typeof result?.name === 'string' ? result.name.trim()
-			: typeof result?.description === 'string' ? result.description.trim()
-			: '';
+		const resultName = typeof result?.name === 'string' ? result.name.trim() : typeof result?.description === 'string' ? result.description.trim() : '';
 		node.setAttribute('data-bhh-quantity', `${total}`);
 		const replaced = applyQuantityInlineToResultNode(node, total, resultName);
 		if (!replaced) {
@@ -670,10 +648,7 @@ async function appendCompendiumRollTableQuantitiesToChatMessage(message) {
 		if (!formula) continue;
 
 		const total = evaluateQuantityFormulaSync(formula);
-		const resultName =
-			typeof result?.name === 'string' ? result.name.trim()
-			: typeof result?.description === 'string' ? result.description.trim()
-			: '';
+		const resultName = typeof result?.name === 'string' ? result.name.trim() : typeof result?.description === 'string' ? result.description.trim() : '';
 		node.setAttribute('data-bhh-quantity', `${total}`);
 		const replaced = applyQuantityInlineToResultNode(node, total, resultName);
 		if (!replaced) {
@@ -734,10 +709,7 @@ function appendRollTableQuantitiesToRenderedMessage(message, html) {
 		if (!formula) continue;
 
 		const total = evaluateQuantityFormulaSync(formula);
-		const resultName =
-			typeof result?.name === 'string' ? result.name.trim()
-			: typeof result?.description === 'string' ? result.description.trim()
-			: '';
+		const resultName = typeof result?.name === 'string' ? result.name.trim() : typeof result?.description === 'string' ? result.description.trim() : '';
 		node.setAttribute('data-bhh-quantity', `${total}`);
 		const replaced = applyQuantityInlineToResultNode(node, total, resultName);
 		if (!replaced) {
@@ -810,13 +782,15 @@ function applyQuantityToDroppedActorSheetData(actor, _sheet, data) {
 
 	const droppedIdentifier = getItemIdentifier(data.data);
 	if (droppedIdentifier && actor?.items?.contents) {
-		const existing = actor.items.contents.find((item) => getItemIdentifier(item) === droppedIdentifier && item.type === data.data.type);
+		const existing = actor.items.contents.find((item) => getItemIdentifier(item) === droppedIdentifier);
 		if (existing) {
 			const currentQuantity = getDocumentQuantity(existing);
 			if (currentQuantity !== null) {
-				actor.updateEmbeddedDocuments('Item', [{ _id: existing.id, 'system.quantity': currentQuantity + quantity }]).catch((error) => {
-					console.error(`${DEBUG_PREFIX} dropActorSheetData:update-by-identifier failed`, error);
-				});
+				actor
+					.updateEmbeddedDocuments('Item', [{ _id: existing.id, 'system.quantity': currentQuantity + quantity }])
+					.catch((error) => {
+						console.error(`${DEBUG_PREFIX} dropActorSheetData:update-by-identifier failed`, error);
+					});
 				return false;
 			}
 		}
@@ -922,7 +896,7 @@ function createHarvestItemData(item, quantity) {
 
 function getItemIdentifier(itemData) {
 	const rawIdentifier = foundry.utils.getProperty(itemData, 'system.identifier');
-	const identifier = rawIdentifier === 'new-item' ? itemData.name.slugify() : rawIdentifier;
+	const identifier = typeof rawIdentifier === 'string' ? rawIdentifier.trim() : '';
 	return identifier || null;
 }
 
@@ -938,7 +912,7 @@ async function createHarvestItemsBatch(actor, entries) {
 	for (const existingItem of actor.items.contents) {
 		const identifier = getItemIdentifier(existingItem);
 		if (!identifier || actorItemsByIdentifier.has(identifier)) continue;
-		actorItemsByIdentifier.set(`${identifier}:${existingItem.type}`, existingItem);
+		actorItemsByIdentifier.set(identifier, existingItem);
 	}
 
 	for (const { item, quantity } of entries) {
@@ -949,7 +923,7 @@ async function createHarvestItemsBatch(actor, entries) {
 				toCreate.push(itemData);
 				continue;
 			}
-			const existingItem = actorItemsByIdentifier.get(`${identifier}:${itemData.type}`);
+			const existingItem = actorItemsByIdentifier.get(identifier);
 			if (!existingItem) {
 				toCreate.push(itemData);
 				continue;
@@ -1000,12 +974,23 @@ async function postHarvestSkillPrompt(payload, options = {}) {
 		skillStats.set(entry.skill, existing);
 	}
 	const requesterId = payload?.requesterUserId ?? game.user.id;
-	// const gmIds = getGmUserIds();
+	const gmIds = getGmUserIds();
 	const requesterUser = requesterId ? game.users.get(requesterId) : null;
-	// const requesterIsGm = requesterUser?.isGM;
-	// const requesterIsActiveGm = requesterUser?.isActiveGM;
-	// const activeGmId = game.users.activeGM?.id;
+	const requesterIsGm = requesterUser?.isGM;
+	const requesterIsActiveGm = requesterUser?.isActiveGM;
+	const activeGmId = game.users.find((user) => user.isActiveGM)?.id;
 	const requesterIds = requesterId ? [requesterId] : [];
+	let gmRecipientIds = [];
+	if (requesterIsActiveGm) {
+		gmRecipientIds = [];
+	} else if (requesterIsGm) {
+		gmRecipientIds = activeGmId ? [activeGmId] : gmIds.filter((id) => id !== requesterId).slice(0, 1);
+	} else {
+		gmRecipientIds = activeGmId ? [activeGmId] : gmIds.slice(0, 1);
+	}
+	const createRequesterMessage = options.createRequesterMessage ?? true;
+	const createGmMessage = options.createGmMessage ?? true;
+	const canCreateGmMessageLocally = game.user.isGM && createGmMessage;
 
 	if (!skillStats.size) {
 		if (available.length === 0 && skipped.missingSkillOrDc > 0) {
@@ -1036,59 +1021,114 @@ async function postHarvestSkillPrompt(payload, options = {}) {
 			reason: available.length ? 'all-filtered-by-harvested-state' : 'no-valid-entries-after-skill-dc-item-filters',
 		});
 		ui.notifications.info(localize('BBH.WARN.NoHarvestableResultsRemaining'));
-		await ChatMessage.create({
-			speaker: ChatMessage.getSpeaker({ actor }),
-			content: `
-				<div class="bugbears-harvester-chat-card">
-					<h3>${localize('BBH.CHAT.HarvestAttemptTitle')}</h3>
-					<p>${format('BBH.CHAT.AttemptBody', {
-						actorName: `<strong>${foundry.utils.escapeHTML(actor.name)}</strong>`,
-						targetName: `<strong>${foundry.utils.escapeHTML(targetActor.name)}</strong>`,
-					})}</p>
-					<p>${format('BBH.CHAT.TableLine', { tableName: foundry.utils.escapeHTML(table.name) })}</p>
-					<p>${foundry.utils.escapeHTML(localize('BBH.WARN.NoHarvestableResultsRemaining'))}</p>
-				</div>
-			`,
-			whisper: requesterIds,
-		});
+		if (createRequesterMessage && requesterIds.length) {
+			await ChatMessage.create({
+				speaker: ChatMessage.getSpeaker({ actor }),
+				content: `
+      <div class="bugbears-harvester-chat-card">
+        <h3>${localize('BBH.CHAT.HarvestAttemptTitle')}</h3>
+        <p>${format('BBH.CHAT.AttemptBody', {
+					actorName: `<strong>${foundry.utils.escapeHTML(actor.name)}</strong>`,
+					targetName: `<strong>${foundry.utils.escapeHTML(targetActor.name)}</strong>`,
+				})}</p>
+        <p>${format('BBH.CHAT.TableLine', { tableName: foundry.utils.escapeHTML(table.name) })}</p>
+        <p>${foundry.utils.escapeHTML(localize('BBH.WARN.NoHarvestableResultsRemaining'))}</p>
+      </div>
+    `,
+				whisper: requesterIds,
+			});
+		}
+
+		if (canCreateGmMessageLocally && gmRecipientIds.length) {
+			await ChatMessage.create({
+				speaker: ChatMessage.getSpeaker({ actor }),
+				content: `
+          <div class="bugbears-harvester-chat-card">
+            <h3>${localize('BBH.CHAT.HarvestAttemptTitle')}</h3>
+            <p>${format('BBH.CHAT.AttemptBody', {
+							actorName: `<strong>${foundry.utils.escapeHTML(actor.name)}</strong>`,
+							targetName: `<strong>${foundry.utils.escapeHTML(targetActor.name)}</strong>`,
+						})}</p>
+            <p>${format('BBH.CHAT.TableLine', { tableName: foundry.utils.escapeHTML(table.name) })}</p>
+            <p>${foundry.utils.escapeHTML(localize('BBH.WARN.NoHarvestableResultsRemaining'))}</p>
+          </div>
+        `,
+				whisper: gmRecipientIds,
+			});
+		}
 		return;
 	}
 
-	// const buttonsForUser = [];
-	// const buttonsForGm = []; // In renderMessageHTML hook we hide non-GM relevant info, so no need for parallel messages.
-	const harvestRequestButtons = [];
+	const buttonsForUser = [];
+	const buttonsForGm = [];
 	for (const [skill, stat] of skillStats.entries()) {
 		const skillLabel = localize(CONFIG.DND5E.skills?.[skill]?.label ?? skill);
 		const dcRangeLabel = stat.minDc === stat.maxDc ? `${stat.minDc}` : `${stat.minDc}-${stat.maxDc}`;
-		harvestRequestButtons.push(`
-			<button type="button" data-harvester-action="roll-skill" data-harvester-skill="${foundry.utils.escapeHTML(skill)}">
-				${foundry.utils.escapeHTML(skillLabel)} (DC ${dcRangeLabel}, ${stat.count})
-			</button>
-    	`);
+		buttonsForUser.push(`
+      <button type="button" data-harvester-action="roll-skill" data-harvester-skill="${foundry.utils.escapeHTML(skill)}">
+        ${foundry.utils.escapeHTML(skillLabel)}
+      </button>
+    `);
+		buttonsForGm.push(`
+      <button type="button" data-harvester-action="roll-skill" data-harvester-skill="${foundry.utils.escapeHTML(skill)}">
+        ${foundry.utils.escapeHTML(skillLabel)} (DC ${dcRangeLabel}, ${stat.count})
+      </button>
+    `);
 	}
 
-	const requesterTableLine = `<p>${format('BBH.CHAT.TableLine', { tableName: foundry.utils.escapeHTML(table.name) })}</p>`;
-	await ChatMessage.create({
-		speaker: ChatMessage.getSpeaker({ actor }),
-		content: `
-			<div class="bugbears-harvester-chat-card">
-			<h3>${localize('BBH.CHAT.HarvestAttemptTitle')}</h3>
-			<p>${format('BBH.CHAT.AttemptBody', {
-				actorName: `<strong>${foundry.utils.escapeHTML(actor.name)}</strong>`,
-				targetName: `<strong>${foundry.utils.escapeHTML(targetActor.name)}</strong>`,
-			})}</p>
-			${requesterTableLine}
-			<p>${localize('BBH.CHAT.SelectSkillPrompt')}</p>
-			<div class="bugbears-harvester-chat-actions">${harvestRequestButtons.join('')}</div>
-			</div>
-		`,
-		flags: {
-			[MODULE_ID]: {
-				pendingHarvest: payload,
+	if (createRequesterMessage && requesterIds.length) {
+		const requesterButtons = requesterIsActiveGm ? buttonsForGm : buttonsForUser;
+		const requesterTableLine = requesterIsActiveGm ? `<p>${format('BBH.CHAT.TableLine', { tableName: foundry.utils.escapeHTML(table.name) })}</p>` : '';
+		await ChatMessage.create({
+			speaker: ChatMessage.getSpeaker({ actor }),
+			content: `
+      <div class="bugbears-harvester-chat-card">
+        <h3>${localize('BBH.CHAT.HarvestAttemptTitle')}</h3>
+        <p>${format('BBH.CHAT.AttemptBody', {
+					actorName: `<strong>${foundry.utils.escapeHTML(actor.name)}</strong>`,
+					targetName: `<strong>${foundry.utils.escapeHTML(targetActor.name)}</strong>`,
+				})}</p>
+        ${requesterTableLine}
+        <p>${localize('BBH.CHAT.SelectSkillPrompt')}</p>
+        <div class="bugbears-harvester-chat-actions">${requesterButtons.join('')}</div>
+      </div>
+    `,
+			flags: {
+				[MODULE_ID]: {
+					pendingHarvest: payload,
+				},
 			},
-		},
-		whisper: requesterIds,
-	});
+			whisper: requesterIds,
+		});
+	}
+
+	if (canCreateGmMessageLocally && gmRecipientIds.length) {
+		await ChatMessage.create({
+			speaker: ChatMessage.getSpeaker({ actor }),
+			content: `
+        <div class="bugbears-harvester-chat-card">
+          <h3>${localize('BBH.CHAT.HarvestAttemptTitle')}</h3>
+          <p>${format('BBH.CHAT.AttemptBody', {
+						actorName: `<strong>${foundry.utils.escapeHTML(actor.name)}</strong>`,
+						targetName: `<strong>${foundry.utils.escapeHTML(targetActor.name)}</strong>`,
+					})}</p>
+          <p>${format('BBH.CHAT.TableLine', { tableName: foundry.utils.escapeHTML(table.name) })}</p>
+          <p>${localize('BBH.CHAT.SelectSkillPrompt')}</p>
+          <div class="bugbears-harvester-chat-actions">${buttonsForGm.join('')}</div>
+        </div>
+      `,
+			flags: {
+				[MODULE_ID]: {
+					pendingHarvest: payload,
+				},
+			},
+			whisper: gmRecipientIds,
+		});
+	}
+
+	if (!game.user.isGM && createGmMessage && gmRecipientIds.length) {
+		await requestGmPostHarvestPrompt(payload);
+	}
 }
 
 function buildHarvestOutcomeContent({ actor, targetActor, creatureType, table, skill, total, successCount, rewards, showTableLine = false }) {
@@ -1157,15 +1197,15 @@ async function requestGmMarkHarvestedResults({ targetActorUuid, tableUuid, skill
 	}
 }
 
-// async function requestGmPostHarvestPrompt(payload) {
-// 	const gm = game.users.activeGM;
-// 	if (!gm) return;
-// 	try {
-// 		await gm.query(QUERY_PROMPT, { payload });
-// 	} catch (error) {
-// 		console.warn(`${DEBUG_PREFIX} requestGmPostHarvestPrompt:query-failed`, error);
-// 	}
-// }
+async function requestGmPostHarvestPrompt(payload) {
+	const gm = game.users.activeGM;
+	if (!gm) return;
+	try {
+		await gm.query(QUERY_PROMPT, { payload });
+	} catch (error) {
+		console.warn(`${DEBUG_PREFIX} requestGmPostHarvestPrompt:query-failed`, error);
+	}
+}
 
 async function requestGmIncrementHarvestAttempts(targetActorUuid) {
 	if (!targetActorUuid) return;
@@ -1281,3 +1321,4 @@ function setHarvestedByTableUuid(flagData, tableUuid, value) {
 	}
 	foundry.utils.setProperty(flagData, tableUuid, value);
 }
+

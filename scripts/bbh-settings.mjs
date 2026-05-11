@@ -178,7 +178,8 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 				handler: HarvestTableMappingMenu.onSubmitForm,
 				closeOnSubmit: true,
 			},
-		});
+		},
+		);
 	}
 
 	static PARTS = {
@@ -195,11 +196,8 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 		const rows = entries.map((entry, index) => ({
 			index,
 			key: entry.type,
-			customType:
-				entry.type === CUSTOM_TYPE_KEY ? ''
-				: isKnownCreatureType(entry.type) || entry.type === 'all' ? ''
-				: entry.type,
-			isCustom: entry.type === CUSTOM_TYPE_KEY || !(isKnownCreatureType(entry.type) || entry.type === 'all'),
+			customType: isKnownCreatureType(entry.type) || entry.type === 'all' ? '' : entry.type,
+			isCustom: !(isKnownCreatureType(entry.type) || entry.type === 'all'),
 			previousType: isKnownCreatureType(entry.type) || entry.type === 'all' ? entry.type : CUSTOM_TYPE_KEY,
 			uuid: entry.uuid,
 			label: entry.label,
@@ -215,7 +213,7 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 		await super._onRender(context, options);
 
 		this.element.querySelectorAll('[data-harvester-drop]').forEach((dropTarget) => {
-			dropTarget.addEventListener('dragover', this.#onDragOver.bind(this));
+			dropTarget.addEventListener('dragover', this.#onDragOver);
 			dropTarget.addEventListener('drop', this.#onDropUuid.bind(this));
 		});
 
@@ -388,7 +386,7 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 	async _onOpenTableSourceAction(event) {
 		event.preventDefault();
 		const row = event.currentTarget?.closest?.('[data-entry-index]');
-		await this.#openRollTableSource({ preferredUuid: this.#getRowUuid(row) });
+		await this.#openRollTableSource(this.#getRowUuid(row));
 	}
 
 	async _onClearUuidAction(event, button) {
@@ -406,21 +404,16 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 	async #onUuidContextMenu(event) {
 		event.preventDefault();
 		const row = event.currentTarget?.closest?.('[data-entry-index]');
-		await this.#openRollTableSource({ preferredUuid: this.#getRowUuid(row), contextMenu: true });
+		await this.#openRollTableSource(this.#getRowUuid(row));
 	}
 
-	async #openRollTableSource({ preferredUuid = '', contextMenu = false } = {}) {
+	async #openRollTableSource(preferredUuid = '') {
 		const configuredPackId = getConfiguredRollTableCompendium();
-		let sourceDocument = null;
-		if (contextMenu) {
-			const sourceUuid = preferredUuid?.trim() || getLastOpenedRollTableUuid() || this.#getFirstConfiguredUuid();
-			sourceDocument = sourceUuid ? await fromUuid(sourceUuid).catch(() => null) : null;
-			if (sourceDocument instanceof RollTable) await setLastOpenedRollTableUuid(sourceDocument.uuid);
-			const sourceFolder = sourceDocument instanceof RollTable ? sourceDocument.folder : null;
-			if (sourceFolder) expandFolderPath(sourceFolder);
-
-			if (game.tables.has(sourceDocument?.id)) return openSideBarRollTablesTab();
-		}
+		const sourceUuid = preferredUuid?.trim() || getLastOpenedRollTableUuid() || this.#getFirstConfiguredUuid();
+		const sourceDocument = sourceUuid ? await fromUuid(sourceUuid).catch(() => null) : null;
+		if (sourceDocument instanceof RollTable) await setLastOpenedRollTableUuid(sourceDocument.uuid);
+		const sourceFolder = sourceDocument instanceof RollTable ? sourceDocument.folder : null;
+		if (sourceFolder) expandFolderPath(sourceFolder);
 
 		const sourcePackId = sourceDocument instanceof RollTable ? (sourceDocument.pack ?? '') : '';
 		const targetPackId = sourcePackId || configuredPackId;
@@ -433,17 +426,15 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 			}
 		}
 
-		openSideBarRollTablesTab();
-	}
-
-	#openSideBarRollTablesTab() {
 		const sidebar = ui.sidebar;
 		if (!sidebar) return;
+
 		sidebar.expand?.();
 		if (typeof sidebar.changeTab === 'function') {
 			sidebar.changeTab('tables', 'primary');
 			return;
 		}
+
 		if (typeof sidebar.activateTab === 'function') {
 			sidebar.activateTab('tables');
 		}
@@ -516,7 +507,7 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 		const select = row.querySelector('[data-entry-type-select]');
 		const button = row.querySelector('[data-custom-type-edit]');
 		if (!select || !button) return;
-		button.classList.toggle('is-hidden', select.value !== CUSTOM_TYPE_KEY);
+		button.hidden = select.value !== CUSTOM_TYPE_KEY;
 	}
 
 	async _replaceEntries(entries) {
@@ -531,7 +522,7 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 
 		if (Object.keys(rawEntries).length) {
 			return Object.values(rawEntries)
-				.map((entry) => normalizeRawEntry(resolveEntryTypeForSave(entry), { keepEmptyUuid: true }))
+				.map((entry) => normalizeRawEntry(entry, { keepEmptyUuid: true }))
 				.filter(Boolean);
 		}
 
@@ -641,8 +632,10 @@ async function getEditableTableEntries() {
 }
 
 function normalizeRawEntry(entry, { keepEmptyUuid = false } = {}) {
-	const rawType = (typeof entry?.type === 'string' ? entry.type : 'all').trim().toLowerCase() || 'all';
-	const type = rawType === CUSTOM_TYPE_KEY ? 'all' : rawType;
+	const type =
+		(typeof entry?.type === 'string' ? entry.type : 'all')
+			.trim()
+			.toLowerCase() || 'all';
 	const uuid = typeof entry?.uuid === 'string' ? entry.uuid.trim() : '';
 	if (!uuid && !keepEmptyUuid) return null;
 
@@ -690,16 +683,18 @@ function getCreatureTypeLabel(type) {
 }
 
 function getNextAvailableCreatureType(entries = []) {
-	const usedTypes = new Set(entries.map((entry) => entry?.type?.toLowerCase?.() ?? '').filter(Boolean));
+	const usedTypes = new Set(
+		entries
+			.map((entry) => entry?.type?.toLowerCase?.() ?? '')
+			.filter(Boolean),
+	);
 	const candidates = ['all', ...Object.keys(CONFIG.DND5E.creatureTypes ?? {})];
 	return candidates.find((type) => !usedTypes.has(type)) ?? 'all';
 }
 
 function getNormalizedCustomTypeValue(value) {
 	if (typeof value !== 'string') return '';
-	const normalized = value.trim().toLowerCase();
-	if (!normalized || normalized === CUSTOM_TYPE_KEY) return '';
-	return normalized;
+	return value.trim().toLowerCase();
 }
 
 function isKnownCreatureType(type) {
@@ -742,11 +737,11 @@ async function promptForCustomCreatureType(initialValue = '') {
 					return getNormalizedCustomTypeValue(value);
 				},
 			},
-			// {
-			// 	action: 'cancel',
-			// 	icon: 'fa-solid fa-xmark',
-			// 	label: localize('BBH.TABLES.Cancel'),
-			// },
+			{
+				action: 'cancel',
+				icon: 'fa-solid fa-xmark',
+				label: localize('BBH.TABLES.Cancel'),
+			},
 		],
 	});
 
@@ -916,19 +911,4 @@ function applyDefaultQuantityFlagToNewRollTable(table, createData) {
 			},
 		},
 	});
-}
-
-function openSideBarRollTablesTab() {
-	const sidebar = ui.sidebar;
-	if (!sidebar) return;
-
-	sidebar.expand?.();
-	if (typeof sidebar.changeTab === 'function') {
-		sidebar.changeTab('tables', 'primary');
-		return;
-	}
-
-	if (typeof sidebar.activateTab === 'function') {
-		sidebar.activateTab('tables');
-	}
 }
