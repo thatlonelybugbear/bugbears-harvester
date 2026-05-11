@@ -196,8 +196,8 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 		const rows = entries.map((entry, index) => ({
 			index,
 			key: entry.type,
-			customType: isKnownCreatureType(entry.type) || entry.type === 'all' ? '' : entry.type,
-			isCustom: !(isKnownCreatureType(entry.type) || entry.type === 'all'),
+			customType: entry.type === CUSTOM_TYPE_KEY ? '' : (isKnownCreatureType(entry.type) || entry.type === 'all' ? '' : entry.type),
+			isCustom: entry.type === CUSTOM_TYPE_KEY || !(isKnownCreatureType(entry.type) || entry.type === 'all'),
 			previousType: isKnownCreatureType(entry.type) || entry.type === 'all' ? entry.type : CUSTOM_TYPE_KEY,
 			uuid: entry.uuid,
 			label: entry.label,
@@ -507,7 +507,7 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 		const select = row.querySelector('[data-entry-type-select]');
 		const button = row.querySelector('[data-custom-type-edit]');
 		if (!select || !button) return;
-		button.hidden = select.value !== CUSTOM_TYPE_KEY;
+		button.classList.toggle('is-hidden', select.value !== CUSTOM_TYPE_KEY);
 	}
 
 	async _replaceEntries(entries) {
@@ -522,7 +522,7 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 
 		if (Object.keys(rawEntries).length) {
 			return Object.values(rawEntries)
-				.map((entry) => normalizeRawEntry(entry, { keepEmptyUuid: true }))
+				.map((entry) => normalizeRawEntry(resolveEntryTypeForSave(entry), { keepEmptyUuid: true }))
 				.filter(Boolean);
 		}
 
@@ -632,10 +632,11 @@ async function getEditableTableEntries() {
 }
 
 function normalizeRawEntry(entry, { keepEmptyUuid = false } = {}) {
-	const type =
+	const rawType =
 		(typeof entry?.type === 'string' ? entry.type : 'all')
 			.trim()
 			.toLowerCase() || 'all';
+	const type = rawType === CUSTOM_TYPE_KEY ? 'all' : rawType;
 	const uuid = typeof entry?.uuid === 'string' ? entry.uuid.trim() : '';
 	if (!uuid && !keepEmptyUuid) return null;
 
@@ -694,7 +695,9 @@ function getNextAvailableCreatureType(entries = []) {
 
 function getNormalizedCustomTypeValue(value) {
 	if (typeof value !== 'string') return '';
-	return value.trim().toLowerCase();
+	const normalized = value.trim().toLowerCase();
+	if (!normalized || normalized === CUSTOM_TYPE_KEY) return '';
+	return normalized;
 }
 
 function isKnownCreatureType(type) {
