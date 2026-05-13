@@ -215,7 +215,7 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 		await super._onRender(context, options);
 
 		this.element.querySelectorAll('[data-harvester-drop]').forEach((dropTarget) => {
-			dropTarget.addEventListener('dragover', this.#onDragOver);
+			dropTarget.addEventListener('dragover', this.#onDragOver.bind(this));
 			dropTarget.addEventListener('drop', this.#onDropUuid.bind(this));
 		});
 
@@ -388,7 +388,7 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 	async _onOpenTableSourceAction(event) {
 		event.preventDefault();
 		const row = event.currentTarget?.closest?.('[data-entry-index]');
-		await this.#openRollTableSource(this.#getRowUuid(row));
+		await this.#openRollTableSource({ preferredUuid: this.#getRowUuid(row) });
 	}
 
 	async _onClearUuidAction(event, button) {
@@ -406,16 +406,21 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 	async #onUuidContextMenu(event) {
 		event.preventDefault();
 		const row = event.currentTarget?.closest?.('[data-entry-index]');
-		await this.#openRollTableSource(this.#getRowUuid(row));
+		await this.#openRollTableSource({ preferredUuid: this.#getRowUuid(row), contextMenu: true });
 	}
 
-	async #openRollTableSource(preferredUuid = '') {
+	async #openRollTableSource({ preferredUuid = '', contextMenu = false } = {}) {
 		const configuredPackId = getConfiguredRollTableCompendium();
-		const sourceUuid = preferredUuid?.trim() || getLastOpenedRollTableUuid() || this.#getFirstConfiguredUuid();
-		const sourceDocument = sourceUuid ? await fromUuid(sourceUuid).catch(() => null) : null;
-		if (sourceDocument instanceof RollTable) await setLastOpenedRollTableUuid(sourceDocument.uuid);
-		const sourceFolder = sourceDocument instanceof RollTable ? sourceDocument.folder : null;
-		if (sourceFolder) expandFolderPath(sourceFolder);
+		let sourceDocument = null;
+		if (contextMenu) {
+			const sourceUuid = preferredUuid?.trim() || getLastOpenedRollTableUuid() || this.#getFirstConfiguredUuid();
+			sourceDocument = sourceUuid ? await fromUuid(sourceUuid).catch(() => null) : null;
+			if (sourceDocument instanceof RollTable) await setLastOpenedRollTableUuid(sourceDocument.uuid);
+			const sourceFolder = sourceDocument instanceof RollTable ? sourceDocument.folder : null;
+			if (sourceFolder) expandFolderPath(sourceFolder);
+
+			if (game.tables.has(sourceDocument?.id)) return openSideBarRollTablesTab();
+		}
 
 		const sourcePackId = sourceDocument instanceof RollTable ? (sourceDocument.pack ?? '') : '';
 		const targetPackId = sourcePackId || configuredPackId;
@@ -428,15 +433,17 @@ class HarvestTableMappingMenu extends foundry.applications.api.HandlebarsApplica
 			}
 		}
 
+		openSideBarRollTablesTab();
+	}
+
+	#openSideBarRollTablesTab() {
 		const sidebar = ui.sidebar;
 		if (!sidebar) return;
-
 		sidebar.expand?.();
 		if (typeof sidebar.changeTab === 'function') {
 			sidebar.changeTab('tables', 'primary');
 			return;
 		}
-
 		if (typeof sidebar.activateTab === 'function') {
 			sidebar.activateTab('tables');
 		}
@@ -909,4 +916,19 @@ function applyDefaultQuantityFlagToNewRollTable(table, createData) {
 			},
 		},
 	});
+}
+
+function openSideBarRollTablesTab() {
+	const sidebar = ui.sidebar;
+	if (!sidebar) return;
+
+	sidebar.expand?.();
+	if (typeof sidebar.changeTab === 'function') {
+		sidebar.changeTab('tables', 'primary');
+		return;
+	}
+
+	if (typeof sidebar.activateTab === 'function') {
+		sidebar.activateTab('tables');
+	}
 }

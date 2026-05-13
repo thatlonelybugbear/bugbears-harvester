@@ -22,7 +22,7 @@ export function registerDocumentSheets() {
 }
 
 export async function applyDefaultDocumentSheets() {
-	if (!game.user.isGM) return;
+	if (!game.user.isActiveGM) return;
 
 	const current = foundry.utils.deepClone(game.settings.get('core', 'sheetClasses') ?? {});
 	let changed = false;

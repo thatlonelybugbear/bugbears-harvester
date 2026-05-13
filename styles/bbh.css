@@ -34,10 +34,15 @@
 	grid-column: 3 / 5;
 }
 
+.bugbears-harvester-settings-header-type{
+	display: flex;
+	align-items: center;
+}
+
 .bugbears-harvester-settings-header-table {
 	display: flex;
 	align-items: center;
-	gap: 0.35rem;
+	gap: 1rem;
 }
 
 .bugbears-harvester-header-open-source {

@@ -3,7 +3,7 @@ import { getCreatureTypeTableMappings, getHarvestAttemptsMaxForActor, isAutoRoll
 import { debugLog, format, infoLog, localize, parseNonNegativeInteger } from './bbh-utils.mjs';
 
 const DEBUG_PREFIX = `${MODULE_ID} |`;
-const QUERY_PROMPT = `${MODULE_ID}.harvestPromptRequest`;
+// const QUERY_PROMPT = `${MODULE_ID}.harvestPromptRequest`;
 const QUERY_MARK = `${MODULE_ID}.harvestMarkRequest`;
 const RECENT_DRAG_QUANTITIES = new Map();
 const RECENT_DRAG_TTL_MS = 15000;
@@ -183,7 +183,7 @@ async function executeHarvest(payload, selectedSkill, promptMessage = null) {
 function addSceneControlButton(controls) {
 	if (!controls || typeof controls !== 'object') return;
 
-	if (!game.user.isGM) {
+	if (!game.user.isActiveGM) {
 		const tokenControl = controls.tokens;
 		if (!tokenControl?.tools || typeof tokenControl.tools !== 'object') return;
 		tokenControl.tools[`${MODULE_ID}-harvest-target`] = {
@@ -256,17 +256,14 @@ function addSceneControlButton(controls) {
 	};
 }
 
-// function onRenderChatMessageHtml(message, html) {
-//   bindHarvestChatActions(message, html);
-// }
-
 function registerHarvestQueries() {
-	CONFIG.queries[QUERY_PROMPT] = async (queryData) => {
-		if (!game.user.isActiveGM) return false;
-		if (!queryData?.payload) return false;
-		await postHarvestSkillPrompt(queryData.payload, { createRequesterMessage: false, createGmMessage: true });
-		return true;
-	};
+	// CONFIG.queries[QUERY_PROMPT] = async (queryData) => {
+	// 	console.log('Received harvest prompt query', { queryData });
+	// 	if (!game.user.isActiveGM) return false;
+	// 	if (!queryData?.payload) return false;
+	// 	await postHarvestSkillPrompt(queryData.payload /*, { createRequesterMessage: false, createGmMessage: true }*/);
+	// 	return true;
+	// };
 	CONFIG.queries[QUERY_MARK] = async (queryData) => {
 		if (!game.user.isActiveGM) return false;
 		if (!queryData?.request) return false;
@@ -278,7 +275,19 @@ function registerHarvestQueries() {
 function bindHarvestChatActions(message, root) {
 	if (!root) return;
 
+	root.querySelectorAll('.table-results li[data-bhh-quantity] a.content-link[data-link]').forEach((link) => {
+		if (link.dataset.bbhQuantityDragBound === 'true') return;
+		link.dataset.bbhQuantityDragBound = 'true';
+		link.addEventListener('dragstart', onQuantityContentLinkDragStart);
+	});
+
+	if (!message.flags?.bbh) return;
+	if (!game.user.isActiveGM) {
+		const tableP = [...root.querySelectorAll('p')].find((p) => p.textContent.trim().startsWith('Table'));
+		tableP?.remove();
+	}
 	root.querySelectorAll("[data-harvester-action='roll-skill']").forEach((button) => {
+		if (!game.user.isActiveGM) button.textContent = button.textContent.split('(')[0].trim();
 		if (button.dataset.harvesterBound === 'true') return;
 		button.dataset.harvesterBound = 'true';
 		button.addEventListener('click', async (event) => {
@@ -291,12 +300,6 @@ function bindHarvestChatActions(message, root) {
 			await executeHarvest(payload, selectedSkill, message);
 			button.disabled = false;
 		});
-	});
-
-	root.querySelectorAll('.table-results li[data-bhh-quantity] a.content-link[data-link]').forEach((link) => {
-		if (link.dataset.bbhQuantityDragBound === 'true') return;
-		link.dataset.bbhQuantityDragBound = 'true';
-		link.addEventListener('dragstart', onQuantityContentLinkDragStart);
 	});
 }
 
@@ -331,13 +334,12 @@ function getGmUserIds() {
 
 async function resolveHarvestTables(creatureTypeKeys = []) {
 	const entries = getCreatureTypeTableMappings();
-	console.log(entries);
 	const exact = entries.filter((entry) => getEntryTypeMatchKeys(entry.type).some((key) => creatureTypeKeys.includes(key)));
-	console.log(exact);
+
+	exact.push(exact.shift()); // We need the proper type last, so that custom entries can return RollTables first.
+
 	const fallback = entries.filter((entry) => entry.type === 'all');
-	console.log(fallback);
 	const exactDocuments = await resolveConfiguredHarvestTables(exact);
-	console.log(exactDocuments);
 	if (exactDocuments.length) return exactDocuments;
 	return resolveConfiguredHarvestTables(fallback);
 }
@@ -372,16 +374,8 @@ function _raceOrType(actor, dataType = 'all') {
 	const systemData = actor?.system;
 	if (!systemData?.details?.type) return {};
 
-	let data = {};
-	if (actor.type === 'character' || actor.type === 'npc') {
-		data = foundry.utils.duplicate(systemData.details.type);
-		data.race = systemData.details.race?.identifier ?? data.value;
-		data.type = actor.type;
-	} else if (actor.type === 'group') {
-		data = { type: 'group', value: systemData.type.value };
-	} else if (actor.type === 'vehicle') {
-		data = { type: 'vehicle', value: systemData.vehicleType };
-	}
+	const data = foundry.utils.duplicate(systemData.details.type);
+	data.race = systemData.details.race?.identifier ?? data.value;
 
 	const normalized = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, typeof v === 'string' ? v.toLowerCase() : v]));
 	if (dataType === 'all') return normalized;
@@ -510,7 +504,6 @@ async function resolveTableHarvestResults(table) {
 				resultId: result?.id,
 				resultName: result?.name ?? result?.description ?? null,
 				documentUuid: result?.documentUuid ?? null,
-				documentCollection: result?.documentCollection ?? null,
 			});
 			continue;
 		}
@@ -575,15 +568,6 @@ function getResultItemUuid(result) {
 		if (uuid) return uuid;
 	}
 
-	const pairs = [
-		[source?.documentCollection, source?.documentId],
-		[result?.source?.documentCollection, result?.source?.documentId],
-	];
-	for (const [collectionRaw, idRaw] of pairs) {
-		const collection = typeof collectionRaw === 'string' ? collectionRaw.trim() : '';
-		const id = typeof idRaw === 'string' ? idRaw.trim() : '';
-		if (collection && id) return `${collection}.${id}`;
-	}
 	return null;
 }
 
@@ -602,7 +586,7 @@ async function resolveQuantity(result, actor, targetActor, table) {
 	return Math.max(1, Math.floor(rolledTotal));
 }
 
-function addRollTableQuantityToChatMessage(message, data) {
+function addRollTableQuantityToChatMessage(message, data, options, user) {
 	if (foundry.utils.getProperty(data, `flags.${MODULE_ID}.quantityAppended`)) return;
 
 	if (typeof data.content !== 'string' || !data.content.trim()) return;
@@ -1007,23 +991,12 @@ async function postHarvestSkillPrompt(payload, options = {}) {
 		skillStats.set(entry.skill, existing);
 	}
 	const requesterId = payload?.requesterUserId ?? game.user.id;
-	const gmIds = getGmUserIds();
+	// const gmIds = getGmUserIds();
 	const requesterUser = requesterId ? game.users.get(requesterId) : null;
-	const requesterIsGm = requesterUser?.isGM;
-	const requesterIsActiveGm = requesterUser?.isActiveGM;
-	const activeGmId = game.users.find((user) => user.isActiveGM)?.id;
+	// const requesterIsGm = requesterUser?.isGM;
+	// const requesterIsActiveGm = requesterUser?.isActiveGM;
+	// const activeGmId = game.users.activeGM?.id;
 	const requesterIds = requesterId ? [requesterId] : [];
-	let gmRecipientIds = [];
-	if (requesterIsActiveGm) {
-		gmRecipientIds = [];
-	} else if (requesterIsGm) {
-		gmRecipientIds = activeGmId ? [activeGmId] : gmIds.filter((id) => id !== requesterId).slice(0, 1);
-	} else {
-		gmRecipientIds = activeGmId ? [activeGmId] : gmIds.slice(0, 1);
-	}
-	const createRequesterMessage = options.createRequesterMessage ?? true;
-	const createGmMessage = options.createGmMessage ?? true;
-	const canCreateGmMessageLocally = game.user.isGM && createGmMessage;
 
 	if (!skillStats.size) {
 		if (available.length === 0 && skipped.missingSkillOrDc > 0) {
@@ -1054,114 +1027,59 @@ async function postHarvestSkillPrompt(payload, options = {}) {
 			reason: available.length ? 'all-filtered-by-harvested-state' : 'no-valid-entries-after-skill-dc-item-filters',
 		});
 		ui.notifications.info(localize('BBH.WARN.NoHarvestableResultsRemaining'));
-		if (createRequesterMessage && requesterIds.length) {
-			await ChatMessage.create({
-				speaker: ChatMessage.getSpeaker({ actor }),
-				content: `
-      <div class="bugbears-harvester-chat-card">
-        <h3>${localize('BBH.CHAT.HarvestAttemptTitle')}</h3>
-        <p>${format('BBH.CHAT.AttemptBody', {
-					actorName: `<strong>${foundry.utils.escapeHTML(actor.name)}</strong>`,
-					targetName: `<strong>${foundry.utils.escapeHTML(targetActor.name)}</strong>`,
-				})}</p>
-        <p>${format('BBH.CHAT.TableLine', { tableName: foundry.utils.escapeHTML(table.name) })}</p>
-        <p>${foundry.utils.escapeHTML(localize('BBH.WARN.NoHarvestableResultsRemaining'))}</p>
-      </div>
-    `,
-				whisper: requesterIds,
-			});
-		}
-
-		if (canCreateGmMessageLocally && gmRecipientIds.length) {
-			await ChatMessage.create({
-				speaker: ChatMessage.getSpeaker({ actor }),
-				content: `
-          <div class="bugbears-harvester-chat-card">
-            <h3>${localize('BBH.CHAT.HarvestAttemptTitle')}</h3>
-            <p>${format('BBH.CHAT.AttemptBody', {
-							actorName: `<strong>${foundry.utils.escapeHTML(actor.name)}</strong>`,
-							targetName: `<strong>${foundry.utils.escapeHTML(targetActor.name)}</strong>`,
-						})}</p>
-            <p>${format('BBH.CHAT.TableLine', { tableName: foundry.utils.escapeHTML(table.name) })}</p>
-            <p>${foundry.utils.escapeHTML(localize('BBH.WARN.NoHarvestableResultsRemaining'))}</p>
-          </div>
-        `,
-				whisper: gmRecipientIds,
-			});
-		}
-		return;
-	}
-
-	const buttonsForUser = [];
-	const buttonsForGm = [];
-	for (const [skill, stat] of skillStats.entries()) {
-		const skillLabel = localize(CONFIG.DND5E.skills?.[skill]?.label ?? skill);
-		const dcRangeLabel = stat.minDc === stat.maxDc ? `${stat.minDc}` : `${stat.minDc}-${stat.maxDc}`;
-		buttonsForUser.push(`
-      <button type="button" data-harvester-action="roll-skill" data-harvester-skill="${foundry.utils.escapeHTML(skill)}">
-        ${foundry.utils.escapeHTML(skillLabel)}
-      </button>
-    `);
-		buttonsForGm.push(`
-      <button type="button" data-harvester-action="roll-skill" data-harvester-skill="${foundry.utils.escapeHTML(skill)}">
-        ${foundry.utils.escapeHTML(skillLabel)} (DC ${dcRangeLabel}, ${stat.count})
-      </button>
-    `);
-	}
-
-	if (createRequesterMessage && requesterIds.length) {
-		const requesterButtons = requesterIsActiveGm ? buttonsForGm : buttonsForUser;
-		const requesterTableLine = requesterIsActiveGm ? `<p>${format('BBH.CHAT.TableLine', { tableName: foundry.utils.escapeHTML(table.name) })}</p>` : '';
 		await ChatMessage.create({
 			speaker: ChatMessage.getSpeaker({ actor }),
 			content: `
-      <div class="bugbears-harvester-chat-card">
-        <h3>${localize('BBH.CHAT.HarvestAttemptTitle')}</h3>
-        <p>${format('BBH.CHAT.AttemptBody', {
-					actorName: `<strong>${foundry.utils.escapeHTML(actor.name)}</strong>`,
-					targetName: `<strong>${foundry.utils.escapeHTML(targetActor.name)}</strong>`,
-				})}</p>
-        ${requesterTableLine}
-        <p>${localize('BBH.CHAT.SelectSkillPrompt')}</p>
-        <div class="bugbears-harvester-chat-actions">${requesterButtons.join('')}</div>
-      </div>
-    `,
-			flags: {
-				[MODULE_ID]: {
-					pendingHarvest: payload,
-				},
-			},
-			whisper: requesterIds,
-		});
-	}
-
-	if (canCreateGmMessageLocally && gmRecipientIds.length) {
-		await ChatMessage.create({
-			speaker: ChatMessage.getSpeaker({ actor }),
-			content: `
-        <div class="bugbears-harvester-chat-card">
-          <h3>${localize('BBH.CHAT.HarvestAttemptTitle')}</h3>
-          <p>${format('BBH.CHAT.AttemptBody', {
+				<div class="bugbears-harvester-chat-card">
+					<h3>${localize('BBH.CHAT.HarvestAttemptTitle')}</h3>
+					<p>${format('BBH.CHAT.AttemptBody', {
 						actorName: `<strong>${foundry.utils.escapeHTML(actor.name)}</strong>`,
 						targetName: `<strong>${foundry.utils.escapeHTML(targetActor.name)}</strong>`,
 					})}</p>
-          <p>${format('BBH.CHAT.TableLine', { tableName: foundry.utils.escapeHTML(table.name) })}</p>
-          <p>${localize('BBH.CHAT.SelectSkillPrompt')}</p>
-          <div class="bugbears-harvester-chat-actions">${buttonsForGm.join('')}</div>
-        </div>
-      `,
-			flags: {
-				[MODULE_ID]: {
-					pendingHarvest: payload,
-				},
-			},
-			whisper: gmRecipientIds,
+					<p>${format('BBH.CHAT.TableLine', { tableName: foundry.utils.escapeHTML(table.name) })}</p>
+					<p>${foundry.utils.escapeHTML(localize('BBH.WARN.NoHarvestableResultsRemaining'))}</p>
+				</div>
+			`,
+			whisper: requesterIds,
 		});
+		return;
 	}
 
-	if (!game.user.isGM && createGmMessage && gmRecipientIds.length) {
-		await requestGmPostHarvestPrompt(payload);
+	// const buttonsForUser = [];
+	// const buttonsForGm = []; // In renderMessageHTML hook we hide non-GM relevant info, so no need for parallel messages.
+	const harvestRequestButtons = [];
+	for (const [skill, stat] of skillStats.entries()) {
+		const skillLabel = localize(CONFIG.DND5E.skills?.[skill]?.label ?? skill);
+		const dcRangeLabel = stat.minDc === stat.maxDc ? `${stat.minDc}` : `${stat.minDc}-${stat.maxDc}`;
+		harvestRequestButtons.push(`
+			<button type="button" data-harvester-action="roll-skill" data-harvester-skill="${foundry.utils.escapeHTML(skill)}">
+				${foundry.utils.escapeHTML(skillLabel)} (DC ${dcRangeLabel}, ${stat.count})
+			</button>
+    	`);
 	}
+
+	const requesterTableLine = `<p>${format('BBH.CHAT.TableLine', { tableName: foundry.utils.escapeHTML(table.name) })}</p>`;
+	await ChatMessage.create({
+		speaker: ChatMessage.getSpeaker({ actor }),
+		content: `
+			<div class="bugbears-harvester-chat-card">
+			<h3>${localize('BBH.CHAT.HarvestAttemptTitle')}</h3>
+			<p>${format('BBH.CHAT.AttemptBody', {
+				actorName: `<strong>${foundry.utils.escapeHTML(actor.name)}</strong>`,
+				targetName: `<strong>${foundry.utils.escapeHTML(targetActor.name)}</strong>`,
+			})}</p>
+			${requesterTableLine}
+			<p>${localize('BBH.CHAT.SelectSkillPrompt')}</p>
+			<div class="bugbears-harvester-chat-actions">${harvestRequestButtons.join('')}</div>
+			</div>
+		`,
+		flags: {
+			[MODULE_ID]: {
+				pendingHarvest: payload,
+			},
+		},
+		whisper: requesterIds,
+	});
 }
 
 function buildHarvestOutcomeContent({ actor, targetActor, creatureType, table, skill, total, successCount, rewards, showTableLine = false }) {
@@ -1230,15 +1148,15 @@ async function requestGmMarkHarvestedResults({ targetActorUuid, tableUuid, skill
 	}
 }
 
-async function requestGmPostHarvestPrompt(payload) {
-	const gm = game.users.activeGM;
-	if (!gm) return;
-	try {
-		await gm.query(QUERY_PROMPT, { payload });
-	} catch (error) {
-		console.warn(`${DEBUG_PREFIX} requestGmPostHarvestPrompt:query-failed`, error);
-	}
-}
+// async function requestGmPostHarvestPrompt(payload) {
+// 	const gm = game.users.activeGM;
+// 	if (!gm) return;
+// 	try {
+// 		await gm.query(QUERY_PROMPT, { payload });
+// 	} catch (error) {
+// 		console.warn(`${DEBUG_PREFIX} requestGmPostHarvestPrompt:query-failed`, error);
+// 	}
+// }
 
 async function requestGmIncrementHarvestAttempts(targetActorUuid) {
 	if (!targetActorUuid) return;

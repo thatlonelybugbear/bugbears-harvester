@@ -64,7 +64,7 @@
 		"TABLES": {
 			"WindowTitle": "Harvester Tables",
 			"Hint": "Add harvest table entries. Choose a creature type, or use ALL to share one table across all creature types. Drag a Roll Table into the UUID field.",
-			"HeaderType": "Type",
+			"HeaderType": "Creature Types",
 			"HeaderRollTable": "Roll Table",
 			"CustomType": "Custom",
 			"CustomTypeEdit": "Edit custom type",
@@ -72,7 +72,7 @@
 			"CustomTypePromptTitle": "Configure Custom Type",
 			"CustomTypePromptLabel": "Custom type key",
 			"CustomTypePromptHint": "Use a lowercase key. You can match subtype-specific entries using value:subtype (example: dragon:red, silver).",
-			"OpenTableSource": "Open Roll Table source",
+			"OpenTableSource": "Open Preferred Roll Table Folder",
 			"CreatureTypeAria": "Creature type",
 			"UuidPlaceholder": "Drop a Roll Table here or paste its UUID",
 			"OpenLinkedRollTable": "Open linked Roll Table",
