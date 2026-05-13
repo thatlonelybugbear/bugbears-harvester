@@ -1,0 +1,87 @@
+<p class="hint">{{localize "BBH.TABLES.Hint"}}</p>
+
+<section class="bugbears-harvester-settings-list">
+  <div class="bugbears-harvester-settings-header">
+    <div class="bugbears-harvester-settings-header-type">{{localize "BBH.TABLES.HeaderType"}}</div>
+    <div class="bugbears-harvester-settings-header-table">
+      <span>{{localize "BBH.TABLES.HeaderRollTable"}}</span>
+      <button
+        type="button"
+        class="bugbears-harvester-header-open-source"
+        data-action="openTableSource"
+        aria-label="{{localize "BBH.TABLES.OpenTableSource"}}"
+        title="{{localize "BBH.TABLES.OpenTableSource"}}"
+      >
+        <i class="fas fa-up-right-from-square"></i>
+      </button>
+    </div>
+    <div class="bugbears-harvester-settings-header-actions"></div>
+  </div>
+  {{#each rows}}
+  <div class="bugbears-harvester-settings-row" data-entry-index="{{this.index}}">
+    <div class="bugbears-harvester-settings-cell bugbears-harvester-settings-cell-type">
+      <select
+        id="bugbears-harvester-entry-type-{{this.index}}"
+        name="entries.{{this.index}}.type"
+        aria-label="{{localize "BBH.TABLES.CreatureTypeAria"}}"
+        data-entry-type-select
+        data-previous-type="{{this.previousType}}"
+      >
+        {{#each this.typeOptions}}
+        <option value="{{this.key}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+        {{/each}}
+      </select>
+      <input type="hidden" name="entries.{{this.index}}.customType" value="{{this.customType}}" data-custom-type-value>
+    </div>
+
+    <div class="bugbears-harvester-settings-cell bugbears-harvester-settings-cell-wide bugbears-harvester-settings-cell-uuid" data-harvester-drop>
+      <div class="bugbears-harvester-uuid-input-wrap">
+        <input
+          type="text"
+          id="bugbears-harvester-entry-display-{{this.index}}"
+          value="{{this.displayValue}}"
+          placeholder="{{localize "BBH.TABLES.UuidPlaceholder"}}"
+          data-uuid-display
+        >
+        <input type="hidden" name="entries.{{this.index}}.uuid" value="{{this.uuid}}" data-uuid-value>
+        <button
+          type="button"
+          class="bugbears-harvester-uuid-open"
+          data-action="openUuid"
+          aria-label="{{localize "BBH.TABLES.OpenLinkedRollTable"}}"
+          title="{{localize "BBH.TABLES.OpenLinkedRollTable"}}"
+        >
+          <i class="fas fa-up-right-from-square"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="bugbears-harvester-settings-actions bugbears-harvester-settings-cell-actions-clear">
+      <button type="button" class="bugbears-harvester-custom-type-edit is-hidden" data-custom-type-edit title="{{localize "BBH.TABLES.CustomTypeEdit"}}" aria-label="{{localize "BBH.TABLES.CustomTypeEdit"}}">
+        <i class="fas fa-pen"></i>
+      </button>
+      <button type="button" data-action="clearUuid" aria-label="{{localize "BBH.TABLES.ClearInput"}}" title="{{localize "BBH.TABLES.ClearInput"}}">
+        <i class="fas fa-xmark"></i>
+      </button>
+    </div>
+
+    <div class="bugbears-harvester-settings-actions bugbears-harvester-settings-cell-actions">
+      <button type="button" data-action="removeEntry" aria-label="{{localize "BBH.TABLES.DeleteEntry"}}" title="{{localize "BBH.TABLES.DeleteEntry"}}">
+        <i class="fas fa-trash"></i>
+      </button>
+    </div>
+  </div>
+  {{/each}}
+</section>
+
+<button type="button" data-action="addEntry">
+  <i class="fas fa-plus"></i>
+  {{localize "BBH.TABLES.AddTable"}}
+</button>
+
+<footer class="sheet-footer flexrow">
+  <button type="submit">
+    <i class="fas fa-save"></i>
+    {{localize "BBH.TABLES.Save"}}
+  </button>
+</footer>

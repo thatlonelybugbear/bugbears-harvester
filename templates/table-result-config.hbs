@@ -1,0 +1,53 @@
+{{formGroup fields.name value=source.name rootId=rootId disabled=nameImgDisabled}}
+{{formGroup fields.type value=source.type options=types classes="slim" rootId=rootId}}
+{{formGroup fields.documentUuid value=source.documentUuid options=documentUuids blank=""
+    hidden=(eq source.type "text") rootId=rootId}}
+{{formGroup fields.img value=source.img disabled=nameImgDisabled rootId=rootId}}
+{{formGroup fields.weight value=source.weight classes="slim" rootId=rootId}}
+
+<div class="form-group slim range">
+    <label for="{{concat rootId "-source.range.0"}}">{{localize "TABLE_RESULT.FIELDS.range.label"}}</label>
+    <div class="form-fields">
+        {{formInput fields.range.element name="source.range.0" value=source.range.[0] placeholder=(localize "BBH.COMMON.RangeLow")
+                    id=(concat rootId "-source.range.0")}}
+        <span>-</span>
+        {{formInput fields.range.element name="source.range.1" value=source.range.[1] placeholder=(localize "BBH.COMMON.RangeHigh")}}
+    </div>
+</div>
+
+{{formGroup fields.description value=source.description rootId=rootId}}
+
+{{#if isHarvestTable}}
+<div class="form-group slim">
+    <label for="{{concat rootId "-harvest-skill"}}">{{localize "BBH.RESULT_CONFIG.HarvestSkillLabel"}}</label>
+    <div class="form-fields">
+        <select id="{{concat rootId "-harvest-skill"}}" name="flags.bbh.skill">
+            <option value=""></option>
+            {{#each harvestSkillOptions}}
+            <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+        </select>
+    </div>
+    <p class="hint">{{localize "BBH.RESULT_CONFIG.HarvestSkillHint"}}</p>
+</div>
+
+<div class="form-group slim">
+    <label for="{{concat rootId "-harvest-dc"}}">{{localize "BBH.RESULT_CONFIG.HarvestDcLabel"}}</label>
+    <div class="form-fields">
+        <input type="number" min="0" step="1" id="{{concat rootId "-harvest-dc"}}"
+               name="flags.bbh.dc" value="{{harvestDc}}" placeholder="{{localize "BBH.RESULT_CONFIG.DcPlaceholder"}}">
+    </div>
+    <p class="hint">{{localize "BBH.RESULT_CONFIG.HarvestDcHint"}}</p>
+</div>
+{{/if}}
+
+{{#if hasQuantityColumn}}
+<div class="form-group slim">
+    <label for="{{concat rootId "-harvest-quantity"}}">{{localize "BBH.RESULT_CONFIG.QuantityLabel"}}</label>
+    <div class="form-fields">
+        <input type="text" id="{{concat rootId "-harvest-quantity"}}"
+               name="flags.bbh.quantity" value="{{harvestQuantity}}" placeholder="{{localize "BBH.RESULT_CONFIG.QuantityPlaceholder"}}">
+    </div>
+    <p class="hint">{{localize "BBH.RESULT_CONFIG.QuantityHint"}}</p>
+</div>
+{{/if}}

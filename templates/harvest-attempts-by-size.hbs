@@ -1,0 +1,27 @@
+<section class="standard-form bugbears-harvester-settings-list">
+	<p class="hint">{{localize "BBH.SETTINGS.HarvestAttemptsBySize.Menu.HintWithDefaultBehavior"}}</p>
+
+	{{#each rows as |row|}}
+		<div class="form-group">
+			<label for="bbh-size-{{row.key}}">{{row.label}}</label>
+			<div class="form-fields">
+				<input
+					id="bbh-size-{{row.key}}"
+					type="number"
+					name="sizes.{{row.key}}"
+					value="{{row.value}}"
+					placeholder="{{row.defaultValue}}"
+					min="1"
+					step="1"
+				>
+			</div>
+		</div>
+	{{/each}}
+</section>
+
+<footer class="form-footer">
+	<button type="submit" class="bright">
+		<i class="fa-solid fa-floppy-disk"></i>
+		{{localize "BBH.TABLES.Save"}}
+	</button>
+</footer>

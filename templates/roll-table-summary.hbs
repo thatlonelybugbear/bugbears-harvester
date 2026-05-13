@@ -1,0 +1,32 @@
+<section class="tab{{#if tab.active}} active{{/if}}" data-group="{{tab.group}}" data-tab="{{tab.id}}">
+    {{formGroup fields.description value=source.description rootId=rootId}}
+    {{formGroup fields.formula value=source.formula placeholder=formulaPlaceholder rootId=rootId}}
+    {{formGroup fields.replacement value=source.replacement rootId=rootId}}
+    {{formGroup fields.displayRoll value=source.displayRoll rootId=rootId}}
+
+    <div class="form-group">
+        <label for="{{concat rootId "-harvest-table"}}">{{localize "BBH.ROLL_TABLE.HarvestDataLabel"}}</label>
+        <div class="form-fields">
+            <input
+                type="checkbox"
+                id="{{concat rootId "-harvest-table"}}"
+                name="flags.bbh.isHarvestTable"
+                {{#if isHarvestTable}}checked{{/if}}
+            >
+        </div>
+        <p class="hint">{{localize "BBH.ROLL_TABLE.HarvestDataHint"}}</p>
+    </div>
+
+    <div class="form-group">
+        <label for="{{concat rootId "-harvest-quantity"}}">{{localize "BBH.ROLL_TABLE.QuantityDataLabel"}}</label>
+        <div class="form-fields">
+            <input
+                type="checkbox"
+                id="{{concat rootId "-harvest-quantity"}}"
+                name="flags.bbh.enableQuantity"
+                {{#if hasQuantityColumn}}checked{{/if}}
+            >
+        </div>
+        <p class="hint">{{localize "BBH.ROLL_TABLE.QuantityDataHint"}}</p>
+    </div>
+</section>
