@@ -2,14 +2,20 @@ import { MODULE_ID } from './bbh-constants.mjs';
 import { debugLog } from './bbh-utils.mjs';
 
 Hooks.once('ready', async function () {
+	if (!(game.modules.get('item-piles') && game.modules.get('itempilesdnd5e'))) return;
+
+	if (window.bbhQuantityRerollerInitialized) return;
+
+	window.bbhQuantityRerollerInitialized = true;
+
 	// ======================================================
 	// ITEM PILES - CUSTOM QUANTITY REROLLER
 	// ======================================================
 	//
 	// What this does:
 	//
-	// 1. Detects when an Item Piles Merchant Roll Table 
-    // button is clicked
+	// 1. Detects when an Item Piles Merchant Roll Table
+	// button is clicked
 	// 2. Tracks which RollTable generated items
 	// 3. Watches Item Piles for newly rendered rolled items
 	// 4. Reads custom quantity formulas from item flags
@@ -38,8 +44,8 @@ Hooks.once('ready', async function () {
 			if (!button) return;
 
 			const container = button.closest('.item-piles-flexrow');
-            const tableName = container?.querySelector('strong')?.textContent?.trim();
-            
+			const tableName = container?.querySelector('strong')?.textContent?.trim();
+
 			if (!tableName) return;
 
 			const table = game.tables.getName(tableName);
@@ -84,8 +90,8 @@ Hooks.once('ready', async function () {
 						if (r.text === itemName) return true;
 
 						return r.text?.trim() === itemName;
-                    });
-                    
+					});
+
 					debugLog(`${MODULE_ID} | Found table result:`, tableResult);
 					if (!tableResult) continue;
 
@@ -137,8 +143,8 @@ Hooks.once('ready', async function () {
 	Hooks.on('item-piles-preAddItems', (actor, _, items) => {
 		debugLog(`${MODULE_ID} | preAddItems`, actor, items);
 
-        for (const item of items) {
-            if (!item) continue;
+		for (const item of items) {
+			if (!item) continue;
 
 			const existingItem = actor.items.find((i) => i.name === item.name && i.type === item.type && i.system.identifier === item.system.identifier);
 			const existingQuantity = existingItem?.system.quantity ?? 0;
