@@ -2,6 +2,7 @@ import { MODULE_ID } from './bbh-constants.mjs';
 import { applyDefaultDocumentSheets, registerDocumentSheets } from './bbh-document-sheets.mjs';
 import { runHarvest, registerHarvestHooks } from './bbh-harvest.mjs';
 import { refreshRollTableCompendiumChoices, registerSettings, registerSettingsHooks } from './bbh-settings.mjs';
+import './bbh-item-piles-integration.mjs';
 
 Hooks.once('init', () => {
 	registerSettings();

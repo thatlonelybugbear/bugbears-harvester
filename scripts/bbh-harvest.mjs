@@ -801,7 +801,7 @@ function applyQuantityToDroppedActorSheetData(actor, _sheet, data) {
 
 	const droppedIdentifier = getItemIdentifier(data.data);
 	if (droppedIdentifier && actor?.items?.contents) {
-		const existing = actor.items.contents.find((item) => getItemIdentifier(item) === droppedIdentifier);
+		const existing = actor.items.contents.find((item) => getItemIdentifier(item) === droppedIdentifier && item.type === data.data.type);
 		if (existing) {
 			const currentQuantity = getDocumentQuantity(existing);
 			if (currentQuantity !== null) {
@@ -913,7 +913,7 @@ function createHarvestItemData(item, quantity) {
 
 function getItemIdentifier(itemData) {
 	const rawIdentifier = foundry.utils.getProperty(itemData, 'system.identifier');
-	const identifier = typeof rawIdentifier === 'string' ? rawIdentifier.trim() : '';
+	const identifier = rawIdentifier === 'new-item' ? itemData.name.slugify() : rawIdentifier;
 	return identifier || null;
 }
 
@@ -929,7 +929,7 @@ async function createHarvestItemsBatch(actor, entries) {
 	for (const existingItem of actor.items.contents) {
 		const identifier = getItemIdentifier(existingItem);
 		if (!identifier || actorItemsByIdentifier.has(identifier)) continue;
-		actorItemsByIdentifier.set(identifier, existingItem);
+		actorItemsByIdentifier.set(`${identifier}:${existingItem.type}`, existingItem);
 	}
 
 	for (const { item, quantity } of entries) {
@@ -940,7 +940,7 @@ async function createHarvestItemsBatch(actor, entries) {
 				toCreate.push(itemData);
 				continue;
 			}
-			const existingItem = actorItemsByIdentifier.get(identifier);
+			const existingItem = actorItemsByIdentifier.get(`${identifier}:${itemData.type}`);
 			if (!existingItem) {
 				toCreate.push(itemData);
 				continue;
