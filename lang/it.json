@@ -1,0 +1,157 @@
+{
+	"BBH": {
+		"COMMON": {
+			"All": "TUTTI",
+			"Unknown": "Sconosciuto",
+			"None": "Nessuno",
+			"One": "1",
+			"RangeLow": "B",
+			"RangeHigh": "A"
+		},
+		"SETTINGS": {
+			"CreatureTypeTables": {
+				"Name": "Voci Tabelle Raccolta",
+				"Hint": "Memorizza le voci UUID delle Tabelle di Tiro associate ai tipi di creatura.",
+				"Menu": {
+					"Name": "Tabelle Tipi Creatura",
+					"Label": "Assegna Tabelle di Tiro",
+					"Hint": "Assegna UUID di Tabelle di Tiro ai tipi di creatura. Le corrispondenze esatte hanno priorità, poi viene usato TUTTI come ripiego."
+				}
+			},
+			"AutoRollHarvest": {
+				"Name": "Controlli Raccolta Rapidi",
+				"Hint": "Se abilitato, i controlli abilità per la raccolta saltano la finestra di configurazione."
+			},
+			"AutoEnableQuantityOnNewTables": {
+				"Name": "Abilita Automaticamente Dati Quantità nelle Nuove Tabelle di Tiro",
+				"Hint": "Se abilitato, le nuove Tabelle di Tiro avranno i Dati Quantità attivati di default."
+			},
+			"RollTableCompendium": {
+				"Name": "Cartella Preferita Tabelle di Tiro",
+				"Hint": "Usata come fonte di fallback quando una riga non risolve un compendio di Tabelle di Tiro.",
+				"None": "Tabelle Tiro dalla Sidebar"
+			},
+			"HarvestAttemptsBySize": {
+				"Name": "Tentativi Massimi di Raccolta ({size})",
+				"Hint": "Numero massimo di controlli di raccolta consentiti contro una creatura di taglia {size} prima che ulteriori tentativi vengano bloccati.",
+				"Menu": {
+					"Name": "Tentativi Massimi di Raccolta per Taglia",
+					"Label": "Menu Tentativi per Taglia",
+					"Hint": "Configura il numero massimo di controlli di raccolta consentiti per ogni taglia creatura di D&D5e.",
+					"HintWithDefaultBehavior": "Configura il numero massimo di controlli di raccolta consentiti per ogni taglia creatura di D&D5e. Lascia un campo vuoto per usare il valore predefinito di quella taglia (valore numerico DND5E, minimo 1)."
+				},
+				"WindowTitle": "Configura Tentativi Massimi di Raccolta"
+			},
+			"Debug": {
+				"Name": "Log di Debug",
+				"Hint": "Abilita log dettagliati di debug/info BBH nella console del browser."
+			}
+		},
+		"KEYBINDINGS": {
+			"OpenTablesModifier": {
+				"Name": "Modificatore Apertura Tabelle Harvester",
+				"Hint": "Tieni premuto questo tasto mentre clicchi il pulsante controllo token Harvester per aprire le Tabelle Tipi di Creatura."
+			}
+		},
+		"SHEETS": {
+			"RollTable": {
+				"Label": "Tabella di Tiro Bugbear's Harvester"
+			},
+			"TableResult": {
+				"Label": "Risultato Tabella Bugbear's Harvester"
+			}
+		},
+		"TABLES": {
+			"WindowTitle": "Tabelle Harvester",
+			"Hint": "Aggiungi voci alle tabelle di raccolta. Scegli un tipo di creatura oppure usa TUTTI per condividere una tabella tra tutti i tipi di creatura. Trascina una Tabella di Tiro nel campo UUID.",
+			"HeaderType": "Tipi di Creatura",
+			"HeaderRollTable": "Tabella di Tiro",
+			"CustomType": "Personalizzato",
+			"CustomTypeEdit": "Modifica tipo personalizzato",
+			"CustomTypeDisplay": "Personalizzato: {value}",
+			"CustomTypePromptTitle": "Configura Tipo Personalizzato",
+			"CustomTypePromptLabel": "Chiave tipo personalizzato",
+			"CustomTypePromptHint": "Usa una chiave in minuscolo. Puoi associare voci specifiche per sottotipo usando valore:sottotipo (esempio: dragon:red, silver).",
+			"OpenTableSource": "Apri Cartella Preferita Tabelle di Tiro",
+			"CreatureTypeAria": "Tipo di creatura",
+			"UuidPlaceholder": "Trascina qui una Tabella di Tiro o incolla il suo UUID",
+			"OpenLinkedRollTable": "Apri Tabella di Tiro collegata",
+			"ClearInput": "Cancella input",
+			"DeleteEntry": "Elimina voce",
+			"AddTable": "Aggiungi Tabella",
+			"Save": "Salva"
+		},
+		"ROLL_TABLE": {
+			"HarvestDataLabel": "Dati Raccolta",
+			"HarvestDataHint": "Mostra i campi abilità e CD di raccolta in questa Tabella di Tiro e permettine l'uso per la risoluzione della raccolta.",
+			"QuantityDataLabel": "Dati Quantità",
+			"QuantityDataHint": "Mostra i campi quantità in questa Tabella di Tiro per le ricompense dei risultati."
+		},
+		"RESULTS": {
+			"Skill": "Abilità",
+			"Dc": "CD",
+			"Quantity": "Quantità",
+			"ApplySkillToAllAria": "Applica abilità a tutti i risultati",
+			"ApplySelectedSkillToAllAria": "Applica l'abilità selezionata a tutti i risultati"
+		},
+		"RESULT_CONFIG": {
+			"HarvestSkillLabel": "Abilità di Raccolta",
+			"HarvestSkillHint": "Controllo abilità richiesto per raccogliere questo risultato.",
+			"HarvestDcLabel": "CD Raccolta",
+			"HarvestDcHint": "Classe Difficoltà per il controllo di raccolta.",
+			"QuantityLabel": "Quantità",
+			"QuantityHint": "Numero fisso o formula di tiro applicata prima della creazione dell'oggetto collegato.",
+			"DcPlaceholder": "10",
+			"QuantityPlaceholder": "1d4"
+		},
+		"CONTROLS": {
+			"GroupTitle": "Bugbear's Harvester",
+			"HarvestTarget": "Raccogli Bersaglio",
+			"ResetHarvestedResults": "Reimposta Risultati Raccolti",
+			"ConfigureTables": "Configura Tabelle"
+		},
+		"INFO": {
+			"ResetHarvestedResultsDone": "Reimpostati i risultati raccolti su {count} / {total} personaggio/i."
+		},
+		"WARN": {
+			"NoHarvestTableForType": "Nessuna tabella di raccolta configurata per il tipo di creatura \"{creatureType}\".",
+			"HarvestTableNoResults": "La tabella di raccolta \"{tableName}\" non ha restituito risultati.",
+			"ResultMissingSkillOrDc": "Il risultato \"{resultName}\" in \"{tableName}\" non ha un'abilità o una CD di raccolta.",
+			"ResultMissingItemLink": "Il risultato \"{resultName}\" in \"{tableName}\" non è collegato a un documento Oggetto.",
+			"SelectOne": {
+				"Actor": "Seleziona un Token prima di tentare la raccolta.",
+				"Target": "Seleziona esattamente un Bersaglio da raccogliere.",
+				"TargetActor": "Questo Token bersagliato fa riferimento a un Personaggio che non esiste più nel Mondo.",
+				"Creature": "Questo Token bersagliato fa riferimento a un Personaggio che non è una Creatura"
+			},
+			"HarvestPayloadUnresolved": "La richiesta di raccolta non può essere risolta dai dati memorizzati.",
+			"TargetMustBeAtZeroHp": "Il bersaglio deve avere 0 PF o meno per poter essere raccolto.",
+			"NoHarvestableResultsRemaining": "Non rimangono risultati raccoglibili per questo bersaglio e tabella.",
+			"HarvestTableMissingResultConfig": "La tabella di raccolta \"{tableName}\" non ha risultati utilizzabili: manca {details}. Configura i flag Abilità/CD BBH nei risultati della tabella.",
+			"HarvestAttemptsReached": "{targetName} non può essere raccolto nuovamente. Numero massimo di tentativi raggiunto ({maxAttempts}).",
+			"MissingSkillLabel": "Abilità",
+			"MissingDcLabel": "CD",
+			"DropRollTable": "Trascina qui un documento Tabella di Tiro.",
+			"TableNameOrUuidNotResolved": "Il valore non corrisponde a un UUID Tabella di Tiro o a un nome tabella esatto.",
+			"UuidNotRollTable": "L'UUID non corrisponde a una Tabella di Tiro.",
+			"SelectTargetsOrControlledForReset": "Seleziona token e/o token bersagliati per reimpostare i risultati raccolti."
+		},
+		"CHAT": {
+			"RollFlavor": "{actorName} raccoglie da {targetName}",
+			"HarvestAttemptTitle": "Tentativo di Raccolta",
+			"AttemptBody": "{actorName} sta raccogliendo da {targetName}.",
+			"TableLine": "Tabella: {tableName}",
+			"ResultLine": "Risultato: {resultName}",
+			"CheckLine": "Controllo: {skillLabel} contro CD {dc}",
+			"SelectSkillPrompt": "Scegli un controllo abilità per tentare la raccolta:",
+			"RollHarvestCheck": "Tira Controllo di Raccolta",
+			"UnnamedResult": "Risultato Senza Nome",
+			"HarvestResultFallback": "Risultato Raccolta",
+			"HarvestSucceeded": "Raccolta Riuscita",
+			"HarvestFailed": "Raccolta Fallita",
+			"OutcomeBody": "{actorName} ha raccolto da {targetName} ({creatureType}).",
+			"CheckResultLine": "Controllo: {skillLabel} {total}",
+			"RewardLine": "Ricompensa: {rewardName}"
+		}
+	}
+}
