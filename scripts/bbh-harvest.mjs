@@ -3,7 +3,6 @@ import { getCreatureTypeTableMappings, getHarvestAttemptsMaxForActor, isAutoRoll
 import { debugLog, format, infoLog, localize, parseNonNegativeInteger } from './bbh-utils.mjs';
 
 const DEBUG_PREFIX = `${MODULE_ID} |`;
-// const QUERY_PROMPT = `${MODULE_ID}.harvestPromptRequest`;
 const QUERY_MARK = `${MODULE_ID}.harvestMarkRequest`;
 const RECENT_DRAG_QUANTITIES = new Map();
 const RECENT_DRAG_TTL_MS = 15000;
@@ -257,13 +256,6 @@ function addSceneControlButton(controls) {
 }
 
 function registerHarvestQueries() {
-	// CONFIG.queries[QUERY_PROMPT] = async (queryData) => {
-	// 	console.log('Received harvest prompt query', { queryData });
-	// 	if (!game.user.isActiveGM) return false;
-	// 	if (!queryData?.payload) return false;
-	// 	await postHarvestSkillPrompt(queryData.payload /*, { createRequesterMessage: false, createGmMessage: true }*/);
-	// 	return true;
-	// };
 	CONFIG.queries[QUERY_MARK] = async (queryData) => {
 		if (!game.user.isActiveGM) return false;
 		if (!queryData?.request) return false;
@@ -334,14 +326,29 @@ function getGmUserIds() {
 
 async function resolveHarvestTables(creatureTypeKeys = []) {
 	const entries = getCreatureTypeTableMappings();
-	const exact = entries.filter((entry) => getEntryTypeMatchKeys(entry.type).some((key) => creatureTypeKeys.includes(key)));
-
-	exact.push(exact.shift()); // We need the proper type last, so that custom entries can return RollTables first.
+	const exact = entries
+		.map((entry, index) => ({ entry, index, matchKeys: getEntryTypeMatchKeys(entry.type) }))
+		.filter(({ matchKeys }) => matchKeys.some((key) => creatureTypeKeys.includes(key)))
+		.sort((a, b) => {
+			const aScore = getTypeSpecificityScore(a.entry.type, a.matchKeys);
+			const bScore = getTypeSpecificityScore(b.entry.type, b.matchKeys);
+			if (aScore !== bScore) return bScore - aScore;
+			return a.index - b.index;
+		})
+		.map(({ entry }) => entry);
 
 	const fallback = entries.filter((entry) => entry.type === 'all');
 	const exactDocuments = await resolveConfiguredHarvestTables(exact);
 	if (exactDocuments.length) return exactDocuments;
 	return resolveConfiguredHarvestTables(fallback);
+}
+
+function getTypeSpecificityScore(rawType, matchKeys = []) {
+	const type = typeof rawType === 'string' ? rawType.toLowerCase().trim() : '';
+	if (!type || type === 'all') return 0;
+	if (type.includes(':') || type.includes('(')) return 200;
+	if (matchKeys.some((key) => key.includes(':') || key.includes('('))) return 150;
+	return 100;
 }
 
 function getEntryTypeMatchKeys(rawType) {
@@ -389,7 +396,6 @@ function getCreatureTypeKeys(actor) {
 	const subtypeValue = all.subtype;
 	const typeLabel = actor?.system?.details?.type?.label;
 	if (typeValue && subtypeValue) values.push(`${typeValue}:${subtypeValue}`);
-	// if (typeValue && subtypeValue) values.push(`${typeValue} (${subtypeValue})`);
 	if (typeof typeLabel === 'string' && typeLabel.trim()) values.push(typeLabel.toLowerCase().trim());
 	if (all.custom && subtypeValue) values.push(`${all.custom} (${subtypeValue})`);
 
@@ -1147,16 +1153,6 @@ async function requestGmMarkHarvestedResults({ targetActorUuid, tableUuid, skill
 		console.warn(`${DEBUG_PREFIX} requestGmMarkHarvestedResults:query-failed`, error);
 	}
 }
-
-// async function requestGmPostHarvestPrompt(payload) {
-// 	const gm = game.users.activeGM;
-// 	if (!gm) return;
-// 	try {
-// 		await gm.query(QUERY_PROMPT, { payload });
-// 	} catch (error) {
-// 		console.warn(`${DEBUG_PREFIX} requestGmPostHarvestPrompt:query-failed`, error);
-// 	}
-// }
 
 async function requestGmIncrementHarvestAttempts(targetActorUuid) {
 	if (!targetActorUuid) return;
