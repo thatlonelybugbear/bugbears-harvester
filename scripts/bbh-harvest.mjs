@@ -107,6 +107,7 @@ async function executeHarvest(payload, selectedSkill, promptMessage = null) {
 			{
 				speaker: ChatMessage.getSpeaker({ actor }),
 				flavor: format('BBH.CHAT.RollFlavor', { actorName: actor.name, targetName: targetActor.name }),
+				...getRollModeMessageData(),
 			},
 		)) ?? [];
 
@@ -330,6 +331,14 @@ function getSingleTargetToken() {
 
 function getGmUserIds() {
 	return ChatMessage.getWhisperRecipients('GM').map((user) => user.id);
+}
+
+function getRollModeMessageData() {
+	const configuredMode = game.settings.get('core', 'rollMode');
+	const mode = typeof configuredMode === 'string' ? configuredMode.trim() : '';
+	if (!mode) return {};
+	const generation = Number(game.release?.generation ?? 0);
+	return generation >= 14 ? { mode } : { rollMode: mode };
 }
 
 async function resolveHarvestTables(creatureTypeKeys = []) {
