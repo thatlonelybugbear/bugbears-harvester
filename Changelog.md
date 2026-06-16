@@ -1,3 +1,6 @@
+## 13.533.4
+* Item Piles Merchants and nested Roll Tables now support quantity-enabled rolls, allowing for more dynamic item generation.
+
 ## 13.533.3
 * Fixed an issue where generic creature mappings (for example `giant`) could be chosen before more specific custom mappings (for example `giant:hill,stone`) during harvesting.
 * Harvest table matching now prioritizes the most specific creature type match first.
