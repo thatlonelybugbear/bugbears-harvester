@@ -5,15 +5,67 @@ import { debugLog, format, infoLog, localize, parseNonNegativeInteger } from './
 const DEBUG_PREFIX = `${MODULE_ID} |`;
 const QUERY_MARK = `${MODULE_ID}.harvestMarkRequest`;
 const RECENT_DRAG_QUANTITIES = new Map();
+const RECENT_ROLL_TABLE_RESULTS = new Map();
 const RECENT_DRAG_TTL_MS = 15000;
 
 export function registerHarvestHooks() {
+	patchRollTableRoll();
+	patchRollTableToMessage();
 	Hooks.on('getSceneControlButtons', addSceneControlButton);
 	Hooks.on('renderChatMessageHTML', bindHarvestChatActions);
 	Hooks.on('preCreateChatMessage', addRollTableQuantityToChatMessage);
 	Hooks.on('createChatMessage', appendCompendiumRollTableQuantitiesToChatMessage);
 	Hooks.on('dropActorSheetData', applyQuantityToDroppedActorSheetData);
 	Hooks.once('ready', registerHarvestQueries);
+}
+
+function patchRollTableRoll() {
+	if (RollTable.prototype._bbhRollPatched) return;
+
+	const originalRoll = RollTable.prototype.roll;
+	RollTable.prototype.roll = async function bbhRoll(options = {}) {
+		const recursive = options.recursive !== false;
+		const draw = await originalRoll.call(this, { ...options, recursive: false });
+		if (!recursive || !draw.results?.length) return draw;
+
+		const expanded = [];
+		const depth = Math.floor(options._depth ?? 0);
+		for (const result of draw.results) {
+			const documentName = foundry.utils.parseUuid(result.documentUuid)?.type;
+			if (result.type !== 'document' || documentName !== 'RollTable') {
+				expanded.push(result);
+				continue;
+			}
+
+			const innerTable = await resolveRollTableFromUuid(result.documentUuid);
+			if (!innerTable) continue;
+
+			const draws = await resolveRollTableResultQuantity(result);
+			for (let i = 0; i < draws; i += 1) {
+				const innerRoll = await innerTable.roll({ _depth: depth + 1 });
+				expanded.push(...(innerRoll.results ?? []));
+			}
+		}
+
+		draw.results = expanded;
+		return draw;
+	};
+	RollTable.prototype._bbhRollPatched = true;
+}
+
+function patchRollTableToMessage() {
+	if (RollTable.prototype._bbhToMessagePatched) return;
+
+	const originalToMessage = RollTable.prototype.toMessage;
+	RollTable.prototype.toMessage = async function bbhToMessage(results, options) {
+		RECENT_ROLL_TABLE_RESULTS.set(this.id, Array.isArray(results) ? results : []);
+		try {
+			return await originalToMessage.call(this, results, options);
+		} finally {
+			setTimeout(() => RECENT_ROLL_TABLE_RESULTS.delete(this.id), 1000);
+		}
+	};
+	RollTable.prototype._bbhToMessagePatched = true;
 }
 
 export function registerHarvestKeybindings() {
@@ -120,14 +172,16 @@ async function executeHarvest(payload, selectedSkill, promptMessage = null) {
 	const creationRequests = [];
 	const rewardEntries = [];
 	for (const entry of succeededEntries) {
-		const quantity = await resolveQuantity(entry.result, actor, targetActor, table);
-		creationRequests.push({ item: entry.item, quantity });
-		rewardEntries.push({
-			resultName: entry.result.name || entry.result.description || localize('BBH.CHAT.UnnamedResult'),
-			itemName: entry.item.name,
-			dc: entry.dc,
-			quantity,
-		});
+		const rewards = await resolveHarvestEntryRewards(entry, actor, targetActor, table);
+		creationRequests.push(...rewards.map(({ item, quantity }) => ({ item, quantity })));
+		rewardEntries.push(
+			...rewards.map(({ item, quantity }) => ({
+				resultName: entry.result.name || entry.result.description || localize('BBH.CHAT.UnnamedResult'),
+				itemName: item.name,
+				dc: entry.dc,
+				quantity,
+			})),
+		);
 	}
 	const created = await createHarvestItemsBatch(actor, creationRequests);
 	if (succeededEntries.length) {
@@ -417,7 +471,7 @@ function getCreatureTypeKeys(actor) {
 }
 
 async function resolveConfiguredHarvestTables(entries) {
-	const documents = await Promise.all(entries.map((entry) => fromUuid(entry.uuid).catch(() => null)));
+	const documents = await Promise.all(entries.map((entry) => resolveRollTableFromUuid(entry.uuid)));
 	const resolved = [];
 	for (const [index, document] of documents.entries()) {
 		const entry = entries[index];
@@ -452,7 +506,7 @@ async function resolveConfiguredHarvestTables(entries) {
 }
 
 async function hydrateHarvestPayload(payload) {
-	const [actor, targetToken, table] = await Promise.all([fromUuid(payload.actorUuid), payload.targetTokenUuid ? fromUuid(payload.targetTokenUuid) : null, fromUuid(payload.tableUuid)]);
+	const [actor, targetToken, table] = await Promise.all([fromUuid(payload.actorUuid), payload.targetTokenUuid ? fromUuid(payload.targetTokenUuid) : null, resolveRollTableFromUuid(payload.tableUuid)]);
 
 	const targetActor = targetToken?.actor ?? null;
 	if (!actor || !targetActor || !table) {
@@ -467,6 +521,36 @@ async function hydrateHarvestPayload(payload) {
 		table,
 		creatureType: payload.creatureType,
 	};
+}
+
+async function resolveRollTableFromUuid(uuid) {
+	const value = typeof uuid === 'string' ? uuid.trim() : '';
+	if (!value) return null;
+
+	const parsed = foundry.utils.parseUuid(value);
+	const collection = parsed?.collection;
+	if (collection?.documentName === 'RollTable' && typeof collection.getDocuments === 'function') {
+		const id = parsed.primaryId ?? parsed.id;
+		const [document] = await collection.getDocuments({ _id: id }).catch(() => []);
+		return document instanceof RollTable ? document : null;
+	}
+
+	const document = await fromUuid(value).catch(() => null);
+	return document instanceof RollTable ? document : null;
+}
+
+async function resolveRollTableResultQuantity(result) {
+	const quantityFlag = result?.getFlag?.(MODULE_ID, FLAGS.result.quantity);
+	const formula = typeof quantityFlag === 'string' ? quantityFlag.trim() : '';
+	if (!formula) return 1;
+
+	try {
+		const roll = await new Roll(formula).evaluate();
+		const total = typeof roll.total === 'number' ? roll.total : 1;
+		return Math.max(1, Math.floor(total));
+	} catch (_error) {
+		return 1;
+	}
 }
 
 async function resolveTableHarvestResults(table) {
@@ -504,16 +588,22 @@ async function resolveTableHarvestResults(table) {
 			});
 			continue;
 		}
-		const item = await resolveResultItem(result, skipped);
-		if (!isItemDocument(item)) {
-			debugLog(`${DEBUG_PREFIX} resolveTableHarvestResults:skip-non-item`, {
+		const document = await resolveResultDocument(result, skipped);
+		if (!isItemDocument(document) && !(document instanceof RollTable)) {
+			debugLog(`${DEBUG_PREFIX} resolveTableHarvestResults:skip-non-item-or-table`, {
 				resultId: result?.id,
 				resultName: result?.name ?? result?.description ?? null,
 				documentUuid: result?.documentUuid ?? null,
 			});
 			continue;
 		}
-		entries.push({ result, item, skill, dc });
+		entries.push({
+			result,
+			item: isItemDocument(document) ? document : null,
+			table: document instanceof RollTable ? document : null,
+			skill,
+			dc,
+		});
 	}
 	if (!entries.length) {
 		console.info(
@@ -533,6 +623,39 @@ async function resolveTableHarvestResults(table) {
 		skipped,
 	});
 	return { entries, skipped };
+}
+
+async function resolveHarvestEntryRewards(entry, actor, targetActor, sourceTable) {
+	if (isItemDocument(entry.item)) {
+		const quantity = await resolveQuantity(entry.result, actor, targetActor, sourceTable);
+		return [{ item: entry.item, quantity }];
+	}
+
+	if (!(entry.table instanceof RollTable)) return [];
+
+	const draws = await resolveQuantity(entry.result, actor, targetActor, sourceTable);
+	const rewards = [];
+	for (let i = 0; i < draws; i += 1) {
+		const draw = await entry.table.roll();
+		for (const result of draw.results ?? []) {
+			const item = await resolveResultItem(result);
+			if (!isItemDocument(item)) continue;
+			const quantity = await resolveQuantity(result, actor, targetActor, entry.table);
+			rewards.push({ item, quantity });
+		}
+	}
+	return rewards;
+}
+
+async function resolveResultDocument(result, skipped = null) {
+	const uuid = getResultItemUuid(result);
+	const documentType = foundry.utils.parseUuid(uuid)?.type;
+	if (documentType === 'RollTable') {
+		const table = await resolveRollTableFromUuid(uuid);
+		if (!table && skipped) skipped.unresolvedItem += 1;
+		return table;
+	}
+	return resolveResultItem(result, skipped);
 }
 
 async function resolveResultItem(result, skipped = null) {
@@ -602,6 +725,7 @@ function addRollTableQuantityToChatMessage(message, data, options, user) {
 	if (!hasWorldTableForCoreRollTableFlag(coreRollTableFlag)) return;
 	const table = resolveTableFromCoreRollTableFlag(coreRollTableFlag);
 	if (!table) return;
+	const rolledResults = RECENT_ROLL_TABLE_RESULTS.get(table.id) ?? [];
 
 	const parser = new DOMParser();
 	const doc = parser.parseFromString(content, 'text/html');
@@ -610,7 +734,7 @@ function addRollTableQuantityToChatMessage(message, data, options, user) {
 
 	let changed = false;
 	for (const [index, node] of resultNodes.entries()) {
-		const result = resolveTableResultForNode(node, index, table);
+		const result = resolveTableResultForNode(node, index, table, rolledResults);
 		if (!result) continue;
 		const quantityFlag = result.getFlag(MODULE_ID, FLAGS.result.quantity);
 		const formula = typeof quantityFlag === 'string' ? quantityFlag.trim() : '';
@@ -631,6 +755,7 @@ function addRollTableQuantityToChatMessage(message, data, options, user) {
 		}
 		changed = true;
 	}
+	changed = collapseRollTableQuantityResultNodes(doc) || changed;
 
 	if (!changed) return;
 	const updatedContent = doc.body.innerHTML;
@@ -658,7 +783,7 @@ async function appendCompendiumRollTableQuantitiesToChatMessage(message) {
 
 	let changed = false;
 	const rollTotal = message.rolls?.[0]?.total;
-	const rolledResults = typeof rollTotal === 'number' ? table.getResultsForRoll(rollTotal) : [];
+	const rolledResults = RECENT_ROLL_TABLE_RESULTS.get(table.id) ?? (typeof rollTotal === 'number' ? table.getResultsForRoll(rollTotal) : []);
 	for (const [index, node] of resultNodes.entries()) {
 		const result = resolveTableResultForNode(node, index, table, rolledResults);
 		if (!result) continue;
@@ -681,6 +806,7 @@ async function appendCompendiumRollTableQuantitiesToChatMessage(message) {
 		}
 		changed = true;
 	}
+	changed = collapseRollTableQuantityResultNodes(doc) || changed;
 
 	if (!changed) return;
 	await message.update({
@@ -721,10 +847,11 @@ function appendRollTableQuantitiesToRenderedMessage(message, html) {
 	const coreRollTableFlag = message.getFlag('core', 'RollTable');
 	const table = resolveTableFromCoreRollTableFlag(coreRollTableFlag);
 	if (!table) return;
+	const rolledResults = RECENT_ROLL_TABLE_RESULTS.get(table.id) ?? [];
 
 	const resultNodes = Array.from(html.querySelectorAll('.table-results li'));
 	for (const [index, node] of resultNodes.entries()) {
-		const result = resolveTableResultForNode(node, index, table);
+		const result = resolveTableResultForNode(node, index, table, rolledResults);
 		if (!result) continue;
 		const quantityFlag = result.getFlag(MODULE_ID, FLAGS.result.quantity);
 		const formula = typeof quantityFlag === 'string' ? quantityFlag.trim() : '';
@@ -744,6 +871,7 @@ function appendRollTableQuantitiesToRenderedMessage(message, html) {
 			node.appendChild(quantityEl);
 		}
 	}
+	collapseRollTableQuantityResultNodes(html);
 }
 
 function applyQuantityInlineToResultNode(node, quantity, resultName) {
@@ -770,6 +898,63 @@ function applyQuantityInlineToResultNode(node, quantity, resultName) {
 	}
 
 	return false;
+}
+
+function collapseRollTableQuantityResultNodes(root) {
+	const resultNodes = Array.from(root?.querySelectorAll?.('.table-results li[data-bhh-quantity]') ?? []);
+	const byKey = new Map();
+	let changed = false;
+
+	for (const node of resultNodes) {
+		const key = getRollTableResultNodeKey(node);
+		if (!key) continue;
+
+		const quantity = Math.max(1, Math.floor(Number.parseFloat(node.getAttribute('data-bhh-quantity') ?? '') || 1));
+		const existing = byKey.get(key);
+		if (!existing) {
+			byKey.set(key, { node, quantity });
+			continue;
+		}
+
+		existing.quantity += quantity;
+		setRollTableResultNodeQuantity(existing.node, existing.quantity);
+		node.remove();
+		changed = true;
+	}
+
+	return changed;
+}
+
+function getRollTableResultNodeKey(node) {
+	const link = node?.querySelector?.('a.content-link');
+	const uuid = link?.getAttribute?.('data-uuid')?.trim?.() ?? '';
+	if (uuid) return `uuid:${uuid}`;
+	const id = link?.getAttribute?.('data-id')?.trim?.() ?? '';
+	const type = link?.getAttribute?.('data-type')?.trim?.() ?? '';
+	if (id) return `id:${type}:${id}`;
+	const text = stripRollTableQuantityPrefix(link?.textContent ?? node?.textContent ?? '');
+	return text ? `text:${text.toLowerCase()}` : '';
+}
+
+function setRollTableResultNodeQuantity(node, quantity) {
+	const qty = Math.max(1, Math.floor(quantity || 1));
+	node.setAttribute('data-bhh-quantity', `${qty}`);
+
+	const link = node.querySelector?.('a.content-link');
+	if (link && link.textContent?.trim()) {
+		link.setAttribute('data-bhh-quantity', `${qty}`);
+		link.textContent = `${qty} x ${stripRollTableQuantityPrefix(link.textContent)}`;
+		return;
+	}
+
+	const description = node.querySelector?.('.description');
+	if (description && description.textContent?.trim()) {
+		description.textContent = `${qty} x ${stripRollTableQuantityPrefix(description.textContent)}`;
+	}
+}
+
+function stripRollTableQuantityPrefix(value) {
+	return `${value ?? ''}`.trim().replace(/^\d+\s*x\s*/i, '').trim();
 }
 
 function onQuantityContentLinkDragStart(event) {
@@ -932,6 +1117,7 @@ async function createHarvestItemsBatch(actor, entries) {
 	const toCreate = [];
 	const updateQuantities = new Map();
 	const actorItemsByIdentifier = new Map();
+	const createItemsByKey = new Map();
 	for (const existingItem of actor.items.contents) {
 		const identifier = getItemIdentifier(existingItem);
 		if (!identifier || actorItemsByIdentifier.has(identifier)) continue;
@@ -942,19 +1128,20 @@ async function createHarvestItemsBatch(actor, entries) {
 		const createData = createHarvestItemData(item, quantity);
 		for (const itemData of createData) {
 			const identifier = getItemIdentifier(itemData);
+			const additionalQuantity = foundry.utils.getProperty(itemData, 'system.quantity');
+			const createKey = getHarvestItemCreateKey(item, itemData, identifier);
 			if (!identifier) {
-				toCreate.push(itemData);
+				queueHarvestItemCreate(toCreate, createItemsByKey, createKey, itemData, additionalQuantity);
 				continue;
 			}
 			const existingItem = actorItemsByIdentifier.get(`${identifier}:${itemData.type}`);
 			if (!existingItem) {
-				toCreate.push(itemData);
+				queueHarvestItemCreate(toCreate, createItemsByKey, createKey, itemData, additionalQuantity);
 				continue;
 			}
 			const currentQuantity = getDocumentQuantity(existingItem);
-			const additionalQuantity = foundry.utils.getProperty(itemData, 'system.quantity');
 			if (currentQuantity === null || additionalQuantity === undefined) {
-				toCreate.push(itemData);
+				queueHarvestItemCreate(toCreate, createItemsByKey, createKey, itemData, additionalQuantity);
 				continue;
 			}
 			const pendingQuantity = updateQuantities.get(existingItem.id) ?? currentQuantity;
@@ -969,6 +1156,31 @@ async function createHarvestItemsBatch(actor, entries) {
 	const updated = toUpdate.length ? await actor.updateEmbeddedDocuments('Item', toUpdate) : [];
 	const created = toCreate.length ? await actor.createEmbeddedDocuments('Item', toCreate) : [];
 	return [...updated, ...created];
+}
+
+function getHarvestItemCreateKey(item, itemData, identifier) {
+	const uuid = typeof item?.uuid === 'string' ? item.uuid.trim() : '';
+	if (uuid) return `${itemData.type}:uuid:${uuid}`;
+	const id = typeof item?.id === 'string' ? item.id.trim() : '';
+	if (id) return `${itemData.type}:id:${id}`;
+	return identifier ? `${itemData.type}:identifier:${identifier}` : '';
+}
+
+function queueHarvestItemCreate(toCreate, createItemsByKey, createKey, itemData, additionalQuantity) {
+	if (!createKey || additionalQuantity === undefined) {
+		toCreate.push(itemData);
+		return;
+	}
+
+	const existing = createItemsByKey.get(createKey);
+	if (!existing) {
+		createItemsByKey.set(createKey, itemData);
+		toCreate.push(itemData);
+		return;
+	}
+
+	const currentQuantity = foundry.utils.getProperty(existing, 'system.quantity') ?? 0;
+	foundry.utils.setProperty(existing, 'system.quantity', currentQuantity + additionalQuantity);
 }
 
 async function postHarvestSkillPrompt(payload, options = {}) {

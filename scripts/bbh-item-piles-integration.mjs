@@ -1,4 +1,4 @@
-import { MODULE_ID } from './bbh-constants.mjs';
+import { FLAGS, MODULE_ID } from './bbh-constants.mjs';
 import { debugLog } from './bbh-utils.mjs';
 
 Hooks.once('ready', async function () {
@@ -25,13 +25,22 @@ Hooks.once('ready', async function () {
 	//
 	// ======================================================
 
-	const MODULE_ID = 'bbh';
-
 	// Store latest rolled table
 	let lastRolledTable = null;
+	let lastRolledResults = [];
 
 	// Store rerolled quantities by item name
 	const quantityMap = new Map();
+
+	if (!RollTable.prototype._bbhItemPilesRollPatched) {
+		const originalRoll = RollTable.prototype.roll;
+		RollTable.prototype.roll = async function bbhItemPilesRoll(options = {}) {
+			const draw = await originalRoll.call(this, options);
+			if (this === lastRolledTable && (options?._depth ?? 0) === 0) lastRolledResults = Array.isArray(draw?.results) ? draw.results : [];
+			return draw;
+		};
+		RollTable.prototype._bbhItemPilesRollPatched = true;
+	}
 
 	// ======================================================
 	// CLICK INTERCEPT
@@ -53,6 +62,7 @@ Hooks.once('ready', async function () {
 			if (!table) return;
 
 			lastRolledTable = table;
+			lastRolledResults = [];
 
 			debugLog(`${MODULE_ID} | Rolling table:`, table.name);
 		},
@@ -86,7 +96,9 @@ Hooks.once('ready', async function () {
 					// Skip already processed rows
 					if (row.dataset.quantityProcessed) continue;
 
-					const tableResult = lastRolledTable.results.contents.find((r) => {
+					const candidateResults = lastRolledResults.length ? lastRolledResults : await collectNestedTableResults(lastRolledTable);
+					const tableResult = candidateResults.find((r) => {
+						if (r.name?.trim() === itemName) return true;
 						if (r.text === itemName) return true;
 
 						return r.text?.trim() === itemName;
@@ -97,18 +109,20 @@ Hooks.once('ready', async function () {
 
 					debugLog(`${MODULE_ID} | Processing rolled item:`, itemName, tableResult);
 
-					const itemUuid = tableResult.documentUuid;
-					const itemHasBbhQuantityFormula = tableResult.flags?.[MODULE_ID]?.quantity;
+					const itemHasBbhQuantityFormula = tableResult.getFlag?.(MODULE_ID, FLAGS.result.quantity) ?? tableResult.flags?.[MODULE_ID]?.quantity;
 
 					if (!itemHasBbhQuantityFormula) continue;
 
 					const roll = await new Roll(`${itemHasBbhQuantityFormula}`).evaluate();
 
-					const quantity = Math.max(1, roll.total);
+					const bbhQuantity = Math.max(1, Math.floor(roll.total));
 
 					const input = row.querySelector('input.item-piles-quantity');
 
 					if (!input) continue;
+
+					const ipQuantity = Math.max(1, Math.floor(Number.parseFloat(input.value) || 1));
+					const quantity = ipQuantity * bbhQuantity;
 
 					input.value = quantity;
 
@@ -159,3 +173,20 @@ Hooks.once('ready', async function () {
 		}
 	});
 });
+
+async function collectNestedTableResults(table, depth = 0, seen = new Set()) {
+	if (!(table instanceof RollTable) || depth > 5 || seen.has(table.uuid)) return [];
+	seen.add(table.uuid);
+
+	const results = [];
+	for (const result of table.results?.contents ?? []) {
+		const documentName = foundry.utils.parseUuid(result.documentUuid)?.type;
+		if (result.type === 'document' && documentName === 'RollTable') {
+			const nestedTable = await fromUuid(result.documentUuid).catch(() => null);
+			results.push(...(await collectNestedTableResults(nestedTable, depth + 1, seen)));
+		} else {
+			results.push(result);
+		}
+	}
+	return results;
+}
