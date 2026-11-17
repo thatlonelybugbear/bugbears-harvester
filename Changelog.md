@@ -1,7 +1,7 @@
 ## 14.611.1
 * Prevents creatures from harvesting themselves, including through existing chat prompts.
 * Defaults harvest results to Survival when no skill is selected.
-* Targets Foundry VTT v14.367+ and D&D 5e v6.0+, checked against the Foundry 14.370 and dnd5e 6.0.6 and 6.1.1 sources.
+* Targets Foundry VTT v14.367+ and retains the D&D 5e v5 minimum, checked against the Foundry 14.370 and dnd5e 5.3.3, 6.0.6 and 6.1.1 sources.
 * Fixes TableResult range fields and ensures both Harvester document sheets are selected on first setup.
 * Uses TableResult names for Item Piles quantity matching.
 * Updates Item Piles merchant integration to use localized controls and bound quantities, avoiding global overrides of item additions.

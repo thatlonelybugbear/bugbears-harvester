@@ -33,7 +33,7 @@
         "id": "dnd5e",
         "type": "system",
         "compatibility": {
-          "minimum": "6.0",
+          "minimum": "5",
           "verified": "6.1.1",
           "maximum": "6.2"
         }
