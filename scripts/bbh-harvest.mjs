@@ -30,6 +30,11 @@ export async function runHarvest({ actor } = {}) {
 	}
 
 	const targetToken = getSingleTargetToken();
+	if (!targetToken) return null;
+	if (harvestingActor.uuid === targetToken.actor.uuid) {
+		ui.notifications.warn(localize('BBH.WARN.CannotHarvestSelf'));
+		return null;
+	}
 	if (!isHarvestableTargetActor(targetToken.actor)) {
 		ui.notifications.info(localize('BBH.WARN.TargetMustBeAtZeroHp'));
 		return null;
@@ -64,6 +69,10 @@ async function executeHarvest(payload, selectedSkill, promptMessage = null) {
 	if (!context) return null;
 
 	const { actor, targetActor, table, creatureType } = context;
+	if (actor.uuid === targetActor.uuid) {
+		ui.notifications.warn(localize('BBH.WARN.CannotHarvestSelf'));
+		return null;
+	}
 	if (!isHarvestableTargetActor(targetActor)) {
 		ui.notifications.info(localize('BBH.WARN.TargetMustBeAtZeroHp'));
 		return null;
@@ -101,6 +110,7 @@ async function executeHarvest(payload, selectedSkill, promptMessage = null) {
 				flavor: format('BBH.CHAT.RollFlavor', { actorName: actor.name, targetName: targetActor.name }),
 			},
 		)) ?? [];
+	if (!roll) return null;
 
 	if (game.user.isGM) {
 		await incrementHarvestAttempts(targetActor);
@@ -461,7 +471,7 @@ async function resolveTableHarvestResults(table) {
 	});
 	for (const result of tableResults) {
 		const skillFlag = result.getFlag(MODULE_ID, FLAGS.result.skill);
-		const skill = typeof skillFlag === 'string' ? skillFlag.trim() : '';
+		const skill = (typeof skillFlag === 'string' ? skillFlag.trim() : '') || 'sur';
 		const dcRaw = result.getFlag(MODULE_ID, FLAGS.result.dc);
 		const dc = parseNonNegativeInteger(dcRaw);
 		const missingSkill = !skill;

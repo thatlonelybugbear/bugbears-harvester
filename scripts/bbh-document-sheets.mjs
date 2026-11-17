@@ -27,8 +27,8 @@ export async function applyDefaultDocumentSheets() {
 	const current = foundry.utils.deepClone(game.settings.get('core', 'sheetClasses') ?? {});
 	let changed = false;
 
-	changed ||= setDefaultSheet(current, 'RollTable', 'base', SHEET_IDS.rollTable);
-	changed ||= setDefaultSheet(current, 'TableResult', 'base', SHEET_IDS.tableResult);
+	changed = setDefaultSheet(current, 'RollTable', 'base', SHEET_IDS.rollTable) || changed;
+	changed = setDefaultSheet(current, 'TableResult', 'base', SHEET_IDS.tableResult) || changed;
 
 	if (!changed) return;
 	await game.settings.set('core', 'sheetClasses', current);
@@ -88,7 +88,7 @@ function getHarvesterRollTableSheetClass() {
 
 		async _prepareResult(result) {
 			const context = await super._prepareResult(result);
-			const harvestSkill = result.getFlag(MODULE_ID, FLAGS.result.skill) ?? '';
+			const harvestSkill = result.getFlag(MODULE_ID, FLAGS.result.skill)?.trim() || 'sur';
 
 			return {
 				...context,
@@ -136,7 +136,7 @@ function getHarvesterTableResultConfigClass() {
 			const table = this.document.parent;
 			const isHarvestTable = !!table?.getFlag(MODULE_ID, FLAGS.table.isHarvestTable);
 			const hasQuantityColumn = !!table?.getFlag(MODULE_ID, FLAGS.table.enableQuantity);
-			const harvestSkill = this.document.getFlag(MODULE_ID, FLAGS.result.skill) ?? '';
+			const harvestSkill = this.document.getFlag(MODULE_ID, FLAGS.result.skill)?.trim() || 'sur';
 
 			context.isHarvestTable = isHarvestTable;
 			context.hasQuantityColumn = hasQuantityColumn;

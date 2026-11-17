@@ -97,7 +97,7 @@
     },
     "RESULT_CONFIG": {
       "HarvestSkillLabel": "Harvest Skill",
-      "HarvestSkillHint": "Skill check required to harvest this result.",
+      "HarvestSkillHint": "Skill check required to harvest this result. Defaults to Survival when no skill is selected.",
       "HarvestDcLabel": "Harvest DC",
       "HarvestDcHint": "Difficulty class for the harvest check.",
       "QuantityLabel": "Quantity",
@@ -121,6 +121,7 @@
       "ResultMissingSkillOrDc": "Result \"{resultName}\" on \"{tableName}\" is missing a harvest skill or DC.",
       "ResultMissingItemLink": "Result \"{resultName}\" on \"{tableName}\" is not linked to an Item document.",
       "SelectOneTarget": "Select exactly one target to harvest.",
+      "CannotHarvestSelf": "A creature cannot harvest itself.",
       "HarvestPayloadUnresolved": "The harvest request could not be resolved from its stored data.",
       "TargetMustBeAtZeroHp": "Target must have 0 HP or less to be harvested.",
       "NoHarvestableResultsRemaining": "No harvestable results remain for this target and table.",

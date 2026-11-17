@@ -6,12 +6,12 @@
 {{formGroup fields.weight value=source.weight classes="slim" rootId=rootId}}
 
 <div class="form-group slim range">
-    <label for="{{concat rootId "-source.range.0"}}">{{localize "TABLE_RESULT.FIELDS.range.label"}}</label>
+    <label for="{{concat rootId "-range.0"}}">{{localize "TABLE_RESULT.FIELDS.range.label"}}</label>
     <div class="form-fields">
-        {{formInput fields.range.element name="source.range.0" value=source.range.[0] placeholder=(localize "BBH.COMMON.RangeLow")
-                    id=(concat rootId "-source.range.0")}}
+        {{formInput fields.range.element name="range.0" value=source.range.[0] placeholder=(localize "BBH.COMMON.RangeLow")
+                    id=(concat rootId "-range.0")}}
         <span>-</span>
-        {{formInput fields.range.element name="source.range.1" value=source.range.[1] placeholder=(localize "BBH.COMMON.RangeHigh")}}
+        {{formInput fields.range.element name="range.1" value=source.range.[1] placeholder=(localize "BBH.COMMON.RangeHigh")}}
     </div>
 </div>
 
