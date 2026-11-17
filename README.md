@@ -4,8 +4,8 @@ A reincarnation of a classic Foundry VTT module for D&D 5e that lets you configu
 
 ## Compatibility
 
-- Foundry VTT v13 (v14 should be available in a few days)
-- D&D 5E system v5+ (verified for 5.3.3).
+- Foundry VTT v14.367+ (verified for 14.370).
+- D&D 5E system v6.0+ (source compatibility checked against 6.0.6 and 6.1.1).
 
 ## Quick Start
 

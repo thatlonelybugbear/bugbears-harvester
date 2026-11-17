@@ -1,10 +1,10 @@
 {
   "id": "bbh",
   "title": "Bugbear's Harvester",
-  "version": "13.533.2",
+  "version": "14.611.1",
   "compatibility": {
-    "minimum": "13",
-    "verified": "13.351",
+    "minimum": "14.367",
+    "verified": "14.370",
     "maximum": "14"
   },
   "authors": [
@@ -33,9 +33,9 @@
         "id": "dnd5e",
         "type": "system",
         "compatibility": {
-          "minimum": "5",
-          "verified": "5.3.3",
-          "maximum": "6"
+          "minimum": "6.0",
+          "verified": "6.1.1",
+          "maximum": "6.2"
         }
       }
     ]
@@ -65,6 +65,6 @@
   "url": "https://github.com/thatlonelybugbear/bugbears-harvester",
   "license": "https://raw.githubusercontent.com/thatlonelybugbear/bugbears-harvester/main/LICENSE",
   "manifest": "https://github.com/thatlonelybugbear/bugbears-harvester/releases/latest/download/module.json",
-  "download": "https://github.com/thatlonelybugbear/bugbears-harvester/releases/download/v13.533.2/module.zip",
+  "download": "https://github.com/thatlonelybugbear/bugbears-harvester/releases/download/v14.611.1/module.zip",
   "changelog": "https://raw.githubusercontent.com/thatlonelybugbear/bugbears-harvester/main/Changelog.md"
 }
